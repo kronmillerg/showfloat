@@ -1,0 +1,49 @@
+https://bigfloat.readthedocs.io/en/latest/reference/index.html
+
+I forget exactly the format I settled on, but the key operations I want are:
+
+String conversions:
+  - Convert from decimal or hex string to (correctly rounded) float
+  - Convert from float to hex string (with appropriate precision for the type)
+  - Convert from float to decimal string (correctly rounded, with limited
+    precision)
+  - Convert from float to decimal string (exact, with as many digits as
+    necessary but ideally no more)
+
+Bit conversions:
+  - Extract sign, exponent, and mantissa from a FP value, as they would be
+    stored in the type being shown (so exponent with bias, mantissa with or
+    without leading bit depending on whether this is the Intel 80-bit format,
+    subnormals as... subnormals)
+  - Convert a triple (s, e, m) to a FP value (again, as they'd be represented
+    in the format)
+
+Believe I can do all of these things with bigfloat and a little knowledge about
+the IEEE representations.
+
+  - Decimal string to float:
+        BigFloat.exact(string, context)
+  - Hex string to float:
+        BigFloat.fromhex(string, context)
+  - Float to hex:
+        myBigFloat.hex() works, but doesn't normalize the way I want. May want
+        to hack this up myself after I extract the mantissa/exponent?
+  - Float to decimal (rounded):
+        str(myfloat) works, but doesn't give control over the precision
+        "{:.60g}".format(myfloat) or similar if you want a specific precision
+  - Float to decimal (exact):
+        "{:.1000g}".format(myfloat)
+            or some sufficiently large number for the type
+
+  - Extract exponent:
+        floor(log2(myfloat)) TODO check boundary conditions for this
+  - Extract mantissa:
+        myfloat * pow(2, -expo + num_mant_bits)
+            give or take an off-by-one error somewhere
+            TODO subnormals, but I'm sure I can implement those by hand
+  - Extract sign:
+        copysign(1, myfloat)
+  - Convert (s, e, m) to float:
+        s * m * pow(2, e)
+            give or take whether e is biased and whether m includes leading 1
+
