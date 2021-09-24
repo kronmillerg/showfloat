@@ -84,6 +84,9 @@ def showFloat(value, sem, fltFormat, exactDecimal=False):
     #         with no additional range.
     #   - If finite, then min(nextUp - x, x - nextDown) should be the ulp,
     #     right? (Though I might just end up calculating it that way...)
+    #       - No, that's wrong. I define ULP as the place value of the bottom
+    #         bit of the mantissa, and by that definition powers of 2 are 1/2
+    #         ulp from their nextDown.
 
     # Decimal value
     if exactDecimal:
@@ -188,24 +191,13 @@ def showFloat(value, sem, fltFormat, exactDecimal=False):
         hexStr += "{:+d}".format(expo)
     print("Hex (%a):     {}".format(hexStr))
 
-    # 10exp2
-    print("10exp2:       {mant:d} * 2**{expo:d}" \
+    # Formerly known as "10exp2".
+    # TODO: Self-checks related to 2**expoForIntMant actually being the ULP:
+    #   - Either nextUp or nextDown is actually that distance away
+    #   - Maybe try actually XORing the mantissa by 1 and repacking it, check
+    #     that abs(the difference) is the ulp?
+    print("int10 * ULP:  {mant:d} * 2**{expo:d}" \
         .format(mant=mant, expo=expoForIntMant))
-
-    # ULP. I guess I could skip this if I always use this as the exp2 in
-    # 10exp2, but no one but me is gonna see the 10exp2 and just know "oh, that
-    # power of 2 is the ULP".
-    # TODO: Maybe add some explanatory text at the end and have one line?
-    #     10exp2:       1234 * 2**-12  (exp2 is the ulp)
-    #     10exp2:       1234 * 2**-12  (ULP = 2**-12)
-    #     int10 * ULP:  1234 * 2**-12
-    # Hah. That last one is kind of clever. If I'm inventing the name anyway, I
-    # may as well invent a name that explains the less-obvious but useful
-    # property, rather than just the basic "integer times some power of 2, but
-    # who knows which one". Note in this case, 0 has to be 0 * 2**-149; I can't
-    # simplify it.
-    print("ULP:          2**{expo:d}" \
-        .format(expo=expoForIntMant))
 
     # TODO unnormals / pseudo-denormals for explicitLeadingBit.
     fpcls = "** ERROR **"
@@ -245,19 +237,13 @@ def splitSEM(value, fltFormat):
     signBit = 1 if bigfloat.copysign(1, value) < 0 else 0
     value = bigfloat.abs(value)
 
-    # FIXME! log2(value) might round UP to an integer! This actually happens
-    # for max subnorm in single precision. Per Python's math.log (double
+    # log2(value) might be within half an ulp below an integer. An example is
+    # max subnorm in single precision. Per Python's math.log (double
     # precision):
     #     log2(0x0.fffffep-126) = -0x1.f800000b8aa3cp+6
-    # which is a couple hex digits off from being representably less than
-    # -0x1.f8p+6 (aka -126).
-    #
-    # HACK! Double the precision and hope this is enough.
-    # TODO: Figure out how much we actually need to guarantee this in general
-    # (or find a different method than log2... surely there is some more direct
-    # way to query this?... or else maybe just try scaling it by the exp we
-    # compute and check if it's off by 1 :thinking:).
-    with bigfloat.extra_precision(bigfloat.getcontext().precision):
+    # To avoid rounding up in that case, set the rounding mode toward negative
+    # infinity.
+    with bigfloat.RoundTowardNegative:
         expo = bigfloat.floor(bigfloat.log2(value))
     #print("value = {}".format(value))
     #print("bigfloat.log2(value) = {}".format(bigfloat.log2(value)))
