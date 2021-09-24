@@ -47,3 +47,8 @@ the IEEE representations.
         s * m * pow(2, e)
             give or take whether e is biased and whether m includes leading 1
 
+
+
+Cool features to implement:
+  - Special options for edge-case constants: max norm, min norm, min subnorm.
+    Check the others from float.h to see if some are useful. (Epsilon??)

@@ -14,14 +14,46 @@ def main():
         print("")
         showFloat(value, (s, e, m), BINARY32, exactDecimal=True)
 
+        print("")
+        value = bigfloat.BigFloat.fromhex("0x1p-125")
+        s, e, m = splitSEM(value, BINARY32)
+        showFloat(value, (s, e, m), BINARY32)
+
+        print("")
+        value = bigfloat.BigFloat.fromhex("0x1.fffffep-126")
+        s, e, m = splitSEM(value, BINARY32)
+        showFloat(value, (s, e, m), BINARY32)
+
+        print("")
+        value = bigfloat.BigFloat.fromhex("0x1p-126")
+        s, e, m = splitSEM(value, BINARY32)
+        showFloat(value, (s, e, m), BINARY32)
+
+        print("")
+        value = bigfloat.BigFloat.fromhex("0x0.fffffep-126")
+        s, e, m = splitSEM(value, BINARY32)
+        showFloat(value, (s, e, m), BINARY32)
+
+        print("")
+        value = bigfloat.BigFloat.fromhex("0x1p-149")
+        s, e, m = splitSEM(value, BINARY32)
+        showFloat(value, (s, e, m), BINARY32)
+
     # TODO actual impl
     pass
 
 def selfTest():
-    assert mkContext(BINARY32) == bigfloat.single_precision
-    assert mkContext(BINARY64) == bigfloat.double_precision
+    assert mkContext(BINARY32)  == bigfloat.single_precision
+    assert mkContext(BINARY64)  == bigfloat.double_precision
+    assert mkContext(HALF_PREC) == bigfloat.half_precision
 
 
+# FIXME: This and some helpers need to be wrapped in:
+#     with mkContext(fltFormat):
+# or possibly a context with wider range but the same precision, to simplify
+# some calculations that might cross over FLT_MAX and then back? Might cause
+# problems on the subnormal end, though. Maybe better to only increase the
+# range for individual calculations where I know it's needed.
 
 def showFloat(value, sem, fltFormat, exactDecimal=False):
     """
@@ -35,6 +67,23 @@ def showFloat(value, sem, fltFormat, exactDecimal=False):
     Bits (hex):   0x3fe12300
     Bits (bin):   0 01111111 00010010001101000000000
     """
+
+    # TODO apply this context
+    context = mkContext(fltFormat)
+
+    # TODO add some self-checks to these:
+    #   - decimal repr, evaluated in original context (round to nearest) should
+    #     parse back to exact same val (unless NaN)
+    #   - hex val ditto, but also in a context with greater precision and/or
+    #     range
+    #   - 10exp2, evaluated to greater range and equal or greater precision,
+    #     should produce same value. (Needs greater range b/c of the exp2.)
+    #       - Actually, scratch that. On the small end, the power mins out at
+    #         min subnorm. On the large end, it's a modest integer times a
+    #         power of 2 that's less than the final value. This should work
+    #         with no additional range.
+    #   - If finite, then min(nextUp - x, x - nextDown) should be the ulp,
+    #     right? (Though I might just end up calculating it that way...)
 
     # Decimal value
     if exactDecimal:
@@ -78,16 +127,138 @@ def showFloat(value, sem, fltFormat, exactDecimal=False):
             (1 + fltFormat.usefulMantBits)*math.log(2, 10)))
         print("Dec (approx): {val:.{prec}g}".format(val=value, prec=prec))
 
+    # TODO skip this next part for inf/nan. Actually, maybe just special case
+    # the non-bits parts for inf/nan at a higher level? May want to put the
+    # parts in separate functions anyway just to save on indents once I add a
+    # 'with context'.
+    #   - Also, I might have to fabricate a canonical repr for NaNs.
+
+    # Split abs(value) into (integer) mantissa times a power of 2. These are
+    # the values used in 10exp2, but are also useful for hex (%a) and ULP.
+    #
+    # TODO: Refactor this, splitSEM, and the eventual packSEM. Maybe have a
+    # class for like "analyzed value" where you can query details of both value
+    # and representation? Things like stored exp, biased exp, stored mant,
+    # represented mant (with leading bit regardless of format), but also value
+    # and... uh. Okay, maybe the details are all of the bits/repr?
+    sgn, storedExpo, storedMant = sem
+    expo = storedExpo - fltFormat.bias
+    if storedExpo == 0:
+        expo = 1 - fltFormat.bias
+    mant = storedMant
+    if storedExpo > 0 and not fltFormat.explicitLeadingBit:
+        mant += 2**fltFormat.mantBits
+    expoForIntMant = expo - fltFormat.usefulMantBits
+
+    # Hex (C-style "%a")
+    # BigFloat's docs doesn't seem to specify how .hex() or "%a" normalizes,
+    # and empirically they are different from each other and _neither_
+    # normalizes the way I want! Okay, fine, I'll do it myself.
+
+    # Enough hex digs for a leading 1 (which wastes 3 bits) and then the rest
+    # of the mantissa.
+    numHexDigs = ceildiv(fltFormat.totalMantBits + 3, 4)
+    mantShift = (1 + 4*(numHexDigs - 1)) - fltFormat.totalMantBits
+    assert 0 <= mantShift < 4
+    shiftedMant = mant << mantShift
+    rawHexDigs = "{digs:0{count}x}".format(digs=shiftedMant, count=numHexDigs)
+    assert len(rawHexDigs) == numHexDigs
+    if storedExpo > 0:
+        assert rawHexDigs[0] == '1'
+    # Trim 0s from the right. Python's <float>.hex() and BigFloat.hex() don't
+    # do this, but at least some libc implementations do.
+    while len(rawHexDigs) > 1 and rawHexDigs[-1] == '0':
+        rawHexDigs = rawHexDigs[:-1]
+    hexStr = ""
+    if sgn:
+        hexStr += '-'
+    hexStr += "0x"
+    hexStr += rawHexDigs[0]
+    if len(rawHexDigs) > 1:
+        hexStr += "."
+        hexStr += rawHexDigs[1:]
+    hexStr += 'p'
+    if bigfloat.is_zero(value):
+        # Special case: display 0 as "0x0p+0", not "0x0p-126". The latter is
+        # more faithful to the representation, but the former is more friendly
+        # to the user and is what %a actually does (at least the implementation
+        # I know; I forget if it's required).
+        hexStr += "+0"
+    else:
+        hexStr += "{:+d}".format(expo)
+    print("Hex (%a):     {}".format(hexStr))
+
+    # 10exp2
+    print("10exp2:       {mant:d} * 2**{expo:d}" \
+        .format(mant=mant, expo=expoForIntMant))
+
+    # ULP. I guess I could skip this if I always use this as the exp2 in
+    # 10exp2, but no one but me is gonna see the 10exp2 and just know "oh, that
+    # power of 2 is the ULP".
+    # TODO: Maybe add some explanatory text at the end and have one line?
+    #     10exp2:       1234 * 2**-12  (exp2 is the ulp)
+    #     10exp2:       1234 * 2**-12  (ULP = 2**-12)
+    #     int10 * ULP:  1234 * 2**-12
+    # Hah. That last one is kind of clever. If I'm inventing the name anyway, I
+    # may as well invent a name that explains the less-obvious but useful
+    # property, rather than just the basic "integer times some power of 2, but
+    # who knows which one". Note in this case, 0 has to be 0 * 2**-149; I can't
+    # simplify it.
+    print("ULP:          2**{expo:d}" \
+        .format(expo=expoForIntMant))
+
+    # TODO unnormals / pseudo-denormals for explicitLeadingBit.
+    fpcls = "** ERROR **"
+    if bigfloat.is_nan(value):
+        fpcls = "FP_NAN"
+    elif bigfloat.is_inf(value):
+        fpcls = "FP_INFINITE"
+    elif bigfloat.is_zero(value):
+        fpcls = "FP_ZERO"
+    elif storedExpo == 0:
+        fpcls = "FP_SUBNORMAL"
+    else:
+        fpcls = "FP_NORMAL"
+    print("fpclassify:   {}".format(fpcls))
+
+    allBits = sgn
+    allBits <<= fltFormat.expBits
+    allBits |= storedExpo
+    allBits <<= fltFormat.mantBits
+    allBits |= storedMant
+    numDigs = ceildiv(1 + fltFormat.expBits + fltFormat.mantBits, 4)
+    print("Bits (hex):   0x{val:0{count}x}".format(val=allBits, count=numDigs))
+
+    print("Bits (bin):   {sgn:01b} {expo:0{expoLen}b} {mant:0{mantLen}b}" \
+        .format(sgn = sgn,
+                expo = storedExpo,
+                expoLen = fltFormat.expBits,
+                mant = storedMant,
+                mantLen = fltFormat.mantBits))
+
+
+def ceildiv(x, y):
+    return (x + y - 1) // y
+
 def splitSEM(value, fltFormat):
-    # TODO:
-    #with mkContext(fltFormat):
-    # Or maybe all this in the wider-ranged context used below for scaling
-    # mant? (Also, TODO does that context need to decrease emin as well?)
 
     signBit = 1 if bigfloat.copysign(1, value) < 0 else 0
     value = bigfloat.abs(value)
 
-    expo = bigfloat.floor(bigfloat.log2(value))
+    # FIXME! log2(value) might round UP to an integer! This actually happens
+    # for max subnorm in single precision. Per Python's math.log (double
+    # precision):
+    #     log2(0x0.fffffep-126) = -0x1.f800000b8aa3cp+6
+    # which is a couple hex digits off from being representably less than
+    # -0x1.f8p+6 (aka -126).
+    #
+    # HACK! Double the precision and hope this is enough.
+    # TODO: Figure out how much we actually need to guarantee this in general
+    # (or find a different method than log2... surely there is some more direct
+    # way to query this?... or else maybe just try scaling it by the exp we
+    # compute and check if it's off by 1 :thinking:).
+    with bigfloat.extra_precision(bigfloat.getcontext().precision):
+        expo = bigfloat.floor(bigfloat.log2(value))
     #print("value = {}".format(value))
     #print("bigfloat.log2(value) = {}".format(bigfloat.log2(value)))
     biasedExpo = int(expo + fltFormat.bias)
@@ -156,6 +327,10 @@ class FloatFormat(object):
         return 2**(self.expBits - 1) - 1
 
     @property
+    def totalMantBits(self):
+        return self.usefulMantBits + 1
+
+    @property
     def expOfFltMax(self):
         """
         Return (unbiased) exponent of FLT_MAX, using IEEE-style normalization,
@@ -181,9 +356,10 @@ class FloatFormat(object):
         # in the bottom bit of the mantissa, with the same exponent.
         return self.expOfFltMin - self.usefulMantBits
 
-BINARY32 = FloatFormat( 8, 23, False)
-BINARY64 = FloatFormat(11, 52, False)
-INTEL80  = FloatFormat(15, 64, True)
+BINARY32  = FloatFormat( 8, 23, False)
+BINARY64  = FloatFormat(11, 52, False)
+INTEL80   = FloatFormat(15, 64, True)
+HALF_PREC = FloatFormat( 5, 10, False)
 
 
 if __name__ == "__main__":
