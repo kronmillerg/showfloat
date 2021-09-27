@@ -52,3 +52,6 @@ the IEEE representations.
 Cool features to implement:
   - Special options for edge-case constants: max norm, min norm, min subnorm.
     Check the others from float.h to see if some are useful. (Epsilon??)
+  - Option for "print out the parameters of this floating-point format". Exp
+    bits, mant bits (stored and w/ leading?), exponents of FLT_MAX FLT_MIN
+    FLT_SUB_MIN, exponent bias.

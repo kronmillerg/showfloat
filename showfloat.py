@@ -1,8 +1,113 @@
-#import argparse
+import argparse
 import bigfloat
 import math
+import sys
 
 def main():
+    selfTest()
+
+    args = parseArgs()
+
+    first = True
+    if args.examples:
+        doExamples()
+        first = False
+
+    for inp in args.inputs:
+        context = mkContext(args.format)
+        with context:
+            inputType = "???"
+            if args.input_is_bits:
+                raise NotImplementedError("bits input not implemented")
+                inputType = "BITS"
+            else:
+                try:
+                    value = bigfloat.BigFloat.exact(inp,
+                        precision=context.precision)
+                    inputType = "DECIMAL"
+                # TODO: Maybe hold out for an actual "0x" in the string to
+                # treat it as hex? Currently we treat "1.234p+5" as hex, which
+                # is maybe a little too forgiving.
+                #     ... which is _definitely_ too forgiving, since "-f" and
+                #     "-d" both parse successfully as hex values :)
+                except ValueError:
+                    value = bigfloat.BigFloat.fromhex(inp, context=context)
+                    inputType = "HEX"
+                # TODO:
+                #   - Error if the parse succeeded but it's out of range
+                #   - Warn if hex input and it's not exact
+            if not first:
+                print("")
+            first = False
+            print("### INPUT {}: {}".format(inputType, inp))
+            sem = splitSEM(value, args.format)
+            showFloat(value, sem, args.format, exactDecimal=args.exact)
+
+
+
+def parseArgs():
+    parser = argparse.ArgumentParser()
+
+    # FIXME: Doesn't handle negative values, since the leading dash makes it
+    # look like an (unrecognized) optional argument. Try '-1.2e3'. (Simple
+    # negatives without an exponent seem to be hacked up to work.) See:
+    #     https://bugs.python.org/issue9334
+    # and as a possible way to work around it:
+    #     https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_intermixed_args
+    # Failing that... is there a way to override the regex for "is it
+    # positional or optional"? (Or for negative numbers?) If we require a '0x'
+    # in hex, it could be as simple as "if it contains a digit, it's
+    # positional".
+    parser.add_argument("inputs", nargs="*",
+                        help="values to show")
+
+    parser.add_argument("-f", "--float", action="store_const",
+                        dest="format", const=BINARY32, default=BINARY32,
+                        help="single precision (IEEE binary32)")
+    parser.add_argument("-d", "--double", action="store_const",
+                        dest="format", const=BINARY64,
+                        help="double precision (IEEE binary64)")
+    parser.add_argument("-L", "--long-double", "--x87",
+                        action="store_const", dest="format", const=INTEL80,
+                        help="Intel 80-bit extended precision " +
+                            "(x86 long double)")
+    # TODO: -q, --binary128: IEEE binary128?
+    # -h is already taken for --help.
+    # TODO: Maybe make all the formats capital for consistency?
+    parser.add_argument("-H", "--half", "--fp16", action="store_const",
+                        dest="format", const=HALF_PREC,
+                        help="half precision")
+    parser.add_argument("-v", "--value", action="store_false", default=False,
+                        dest="input_is_bits",
+                        help="treat input as numerical value")
+    parser.add_argument("-b", "--bits", action="store_true",
+                        dest="input_is_bits",
+                        help="treat input as bit representation")
+    parser.add_argument("--exact", action="store_true",
+                        help="print exact decimal representation")
+    parser.add_argument("--approx", action="store_false", dest="exact",
+                        help="print approximate decimal representation " +
+                            "(sufficient to recover value)")
+
+    parser.add_argument("--examples", action="store_true",
+                        help="try some examples, for testing purposes")
+
+    args = parser.parse_args()
+
+    if not args.inputs and not args.examples:
+        print("Must specify at least one value or --examples")
+        parser.print_usage
+        sys.exit(1)
+
+    return args
+
+
+def selfTest():
+    assert mkContext(BINARY32)  == bigfloat.single_precision
+    assert mkContext(BINARY64)  == bigfloat.double_precision
+    assert mkContext(HALF_PREC) == bigfloat.half_precision
+
+def doExamples():
     with mkContext(BINARY32):
         value = bigfloat.BigFloat.fromhex("-0x1.55554p-126")
         s, e, m = splitSEM(value, BINARY32)
@@ -38,14 +143,6 @@ def main():
         value = bigfloat.BigFloat.fromhex("0x1p-149")
         s, e, m = splitSEM(value, BINARY32)
         showFloat(value, (s, e, m), BINARY32)
-
-    # TODO actual impl
-    pass
-
-def selfTest():
-    assert mkContext(BINARY32)  == bigfloat.single_precision
-    assert mkContext(BINARY64)  == bigfloat.double_precision
-    assert mkContext(HALF_PREC) == bigfloat.half_precision
 
 
 # FIXME: This and some helpers need to be wrapped in:
@@ -349,6 +446,5 @@ HALF_PREC = FloatFormat( 5, 10, False)
 
 
 if __name__ == "__main__":
-    selfTest()
     main()
 
