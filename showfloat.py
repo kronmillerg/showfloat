@@ -9,10 +9,6 @@ def main():
     args = parseArgs()
 
     first = True
-    if args.examples:
-        doExamples()
-        first = False
-
     for inp in args.inputs:
         context = mkContext(args.format)
         with context:
@@ -40,7 +36,8 @@ def main():
                 except ValueError:
                     print("Error: failed to parse input {!r}".format(inp))
                     sys.exit(1)
-                    # TODO: Usage and exit.
+                    # TODO: Usage and exit. Can we move this parsing into
+                    # parseArgs and store the parsed values in args.inputs?
                 # TODO:
                 #   - Error if the parse succeeded but it's out of range
                 #   - Warn if hex input and it's not exact
@@ -87,9 +84,6 @@ def parseArgs():
                         help="print approximate decimal representation " +
                             "(sufficient to recover value)")
 
-    parser.add_argument("--examples", action="store_true",
-                        help="try some examples, for testing purposes")
-
     # Now do the hard part of the argument parsing ourself, because argparse
     # doesn't seem to have a (documented) way to treat something like -1.2e3 as
     # a positional argument. Instead, it would interpret that as an optional
@@ -131,9 +125,9 @@ def parseArgs():
 
     args = parser.parse_args(nonpos_args + ["--"] + pos_args)
 
-    if not args.inputs and not args.examples:
-        print("Must specify at least one value or --examples")
-        parser.print_usage
+    if not args.inputs:
+        print("Must specify at least one value")
+        parser.print_usage()
         sys.exit(1)
 
     return args
@@ -143,49 +137,6 @@ def selfTest():
     assert mkContext(BINARY32)  == bigfloat.single_precision
     assert mkContext(BINARY64)  == bigfloat.double_precision
     assert mkContext(HALF_PREC) == bigfloat.half_precision
-
-# TODO replace this with a proper testing framework
-def doExamples():
-    with mkContext(BINARY32):
-        value = bigfloat.BigFloat.fromhex("-0x1.55554p-126")
-        s, e, m = splitSEM(value, BINARY32)
-        print "{:01b} {:08b} {:023b}".format(s, e, m)
-
-        print("")
-        showFloat(value, (s, e, m), BINARY32)
-
-        print("")
-        showFloat(value, (s, e, m), BINARY32, exactDecimal=True)
-
-        print("")
-        value = bigfloat.BigFloat.fromhex("0x1p-125")
-        s, e, m = splitSEM(value, BINARY32)
-        showFloat(value, (s, e, m), BINARY32)
-
-        print("")
-        value = bigfloat.BigFloat.fromhex("0x1.fffffep-126")
-        s, e, m = splitSEM(value, BINARY32)
-        showFloat(value, (s, e, m), BINARY32)
-
-        print("")
-        value = bigfloat.BigFloat.fromhex("0x1p-126")
-        s, e, m = splitSEM(value, BINARY32)
-        showFloat(value, (s, e, m), BINARY32)
-
-        print("")
-        value = bigfloat.BigFloat.fromhex("0x0.fffffep-126")
-        s, e, m = splitSEM(value, BINARY32)
-        showFloat(value, (s, e, m), BINARY32)
-
-        print("")
-        value = bigfloat.BigFloat.fromhex("0x1p-149")
-        s, e, m = splitSEM(value, BINARY32)
-        showFloat(value, (s, e, m), BINARY32)
-
-        print("")
-        value = bigfloat.BigFloat.fromhex("-0")
-        s, e, m = splitSEM(value, BINARY32)
-        showFloat(value, (s, e, m), BINARY32)
 
 
 # FIXME: This and some helpers need to be wrapped in:
@@ -197,15 +148,14 @@ def doExamples():
 
 def showFloat(value, sem, fltFormat, exactDecimal=False):
     """
-    Example format (tentative):
+    Example format:
 
-    Dec (approx): 1.234
-    Hex (%a):     0x1.234p+0
-    10exp2:       1234 * 2**-12
-    ULP:          2 ** -12
-    FP_CLASSIFY:  FP_NORMAL
-    Bits (hex):   0x3fe12300
-    Bits (bin):   0 01111111 00010010001101000000000
+    Dec (approx): 1.8125
+    Hex (%a):     0x1.dp+0
+    int10 * ULP:  15204352 * 2**-23
+    fpclassify:   FP_NORMAL
+    Bits (hex):   0x3fe80000
+    Bits (bin):   0 01111111 11010000000000000000000
     """
 
     # TODO apply this context
@@ -284,6 +234,8 @@ def showFloat(value, sem, fltFormat, exactDecimal=False):
     # and representation? Things like stored exp, biased exp, stored mant,
     # represented mant (with leading bit regardless of format), but also value
     # and... uh. Okay, maybe the details are all of the bits/repr?
+    #   - Maybe still have functions for the two directions so I can do
+    #     self-checks to the effect of splitSEM(packSEM(x)) == x, vice versa?
     sgn, storedExpo, storedMant = sem
     expo = storedExpo - fltFormat.bias
     if storedExpo == 0:
@@ -390,6 +342,7 @@ def splitSEM(value, fltFormat):
     else:
         with bigfloat.RoundTowardNegative:
             expo = bigfloat.floor(bigfloat.log2(value))
+        # TODO logging.debug for all of these, option to enable.
         #print("value = {}".format(value))
         #print("bigfloat.log2(value) = {}".format(bigfloat.log2(value)))
         biasedExpo = int(expo + fltFormat.bias)
