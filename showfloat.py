@@ -144,6 +144,7 @@ def selfTest():
     assert mkContext(BINARY64)  == bigfloat.double_precision
     assert mkContext(HALF_PREC) == bigfloat.half_precision
 
+# TODO replace this with a proper testing framework
 def doExamples():
     with mkContext(BINARY32):
         value = bigfloat.BigFloat.fromhex("-0x1.55554p-126")
@@ -178,6 +179,11 @@ def doExamples():
 
         print("")
         value = bigfloat.BigFloat.fromhex("0x1p-149")
+        s, e, m = splitSEM(value, BINARY32)
+        showFloat(value, (s, e, m), BINARY32)
+
+        print("")
+        value = bigfloat.BigFloat.fromhex("-0")
         s, e, m = splitSEM(value, BINARY32)
         showFloat(value, (s, e, m), BINARY32)
 
@@ -377,17 +383,22 @@ def splitSEM(value, fltFormat):
     #     log2(0x0.fffffep-126) = -0x1.f800000b8aa3cp+6
     # To avoid rounding up in that case, set the rounding mode toward negative
     # infinity.
-    with bigfloat.RoundTowardNegative:
-        expo = bigfloat.floor(bigfloat.log2(value))
-    #print("value = {}".format(value))
-    #print("bigfloat.log2(value) = {}".format(bigfloat.log2(value)))
-    biasedExpo = int(expo + fltFormat.bias)
-    if biasedExpo < 1:
-        # Subnormal. The value stored is one less than for FLT_MIN, but the
-        # represented exponent is the same; the values are continuous because
-        # the leading bit changes to 0 across this threshold.
+    if bigfloat.is_zero(value):
+        # TODO combine with subnormal code below
         biasedExpo = 0
         expo = 1 - fltFormat.bias
+    else:
+        with bigfloat.RoundTowardNegative:
+            expo = bigfloat.floor(bigfloat.log2(value))
+        #print("value = {}".format(value))
+        #print("bigfloat.log2(value) = {}".format(bigfloat.log2(value)))
+        biasedExpo = int(expo + fltFormat.bias)
+        if biasedExpo < 1:
+            # Subnormal. The value stored is one less than for FLT_MIN, but the
+            # represented exponent is the same; the values are continuous
+            # because the leading bit changes to 0 across this threshold.
+            biasedExpo = 0
+            expo = 1 - fltFormat.bias
 
     # The mantissa as it's stored (an integer value).
     with bigfloat.Context(emax=bigfloat.getcontext().emax +
