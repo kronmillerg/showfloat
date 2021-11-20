@@ -20,19 +20,27 @@ def main():
             if args.input_is_bits:
                 raise NotImplementedError("bits input not implemented")
                 inputType = "BITS"
+                # TODO. Require a 0x prefix for hex here. If no 0x, then
+                # (grudgingly) try to parse it as decimal, but print a warning
+                # if it succeeds.
             else:
                 try:
-                    value = bigfloat.BigFloat.exact(inp,
-                        precision=context.precision)
-                    inputType = "DECIMAL"
-                # TODO: Maybe hold out for an actual "0x" in the string to
-                # treat it as hex? Currently we treat "1.234p+5" as hex, which
-                # is maybe a little too forgiving.
-                #     ... which is _definitely_ too forgiving, since "-f" and
-                #     "-d" both parse successfully as hex values :)
+                    # Note: it's ("0x" in inp) not (inp.startswith("0x"))
+                    # because there could be a negative sign in front. Nothing
+                    # with a "0x" in it can be valid decimal, and fromhex is
+                    # already going to check validity, so it doesn't matter
+                    # that we're being overly forgiving with this check.
+                    if "0x" in inp or "0X" in inp:
+                        value = bigfloat.BigFloat.fromhex(inp, context=context)
+                        inputType = "HEX"
+                    else:
+                        value = bigfloat.BigFloat.exact(inp,
+                            precision=context.precision)
+                        inputType = "DECIMAL"
                 except ValueError:
-                    value = bigfloat.BigFloat.fromhex(inp, context=context)
-                    inputType = "HEX"
+                    print("Error: failed to parse input {!r}".format(inp))
+                    sys.exit(1)
+                    # TODO: Usage and exit.
                 # TODO:
                 #   - Error if the parse succeeded but it's out of range
                 #   - Warn if hex input and it's not exact
@@ -48,17 +56,7 @@ def main():
 def parseArgs():
     parser = argparse.ArgumentParser()
 
-    # FIXME: Doesn't handle negative values, since the leading dash makes it
-    # look like an (unrecognized) optional argument. Try '-1.2e3'. (Simple
-    # negatives without an exponent seem to be hacked up to work.) See:
-    #     https://bugs.python.org/issue9334
-    # and as a possible way to work around it:
-    #     https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_intermixed_args
-    # Failing that... is there a way to override the regex for "is it
-    # positional or optional"? (Or for negative numbers?) If we require a '0x'
-    # in hex, it could be as simple as "if it contains a digit, it's
-    # positional".
-    parser.add_argument("inputs", nargs="*",
+    parser.add_argument("inputs", nargs="*", metavar="VALUE",
                         help="values to show")
 
     parser.add_argument("-f", "--float", action="store_const",
@@ -92,7 +90,46 @@ def parseArgs():
     parser.add_argument("--examples", action="store_true",
                         help="try some examples, for testing purposes")
 
-    args = parser.parse_args()
+    # Now do the hard part of the argument parsing ourself, because argparse
+    # doesn't seem to have a (documented) way to treat something like -1.2e3 as
+    # a positional argument. Instead, it would interpret that as an optional
+    # argument, then give an error because no such argument is defined.
+    # argparse actually has a heuristic specifically for identifying negative
+    # numbers; it's just not smart enough to recognize all the floating-point
+    # formats this script accepts. An alternate way to implement this would be
+    # by overriding parser._negative_number_matcher, but since that's not
+    # documented, I'm hesitant to take that approach. See:
+    #     https://docs.python.org/3/library/argparse.html#arguments-containing
+    #
+    # The approach here is to split arguments into two groups -- non-positional
+    # args and positional args -- move all the positional args to the end, and
+    # insert a "--" before them. This forces argparse to treat them as
+    # positional, nevermind any leading dashes.
+    nonpos_args = []
+    pos_args = []
+    for i in range(1, len(sys.argv)):
+        arg = sys.argv[i]
+        # If there's already a "--", stop parsing here because everything else
+        # must be positional. Skip over the "--" since we're already going to
+        # add that ourself.
+        if arg == "--":
+            pos_args.extend(sys.argv[i+1:])
+            break
+        is_positional = False
+        if arg[0] != '-':
+            is_positional = True
+        # All numerical arguments must contain a _decimal_ digit. Hex arguments
+        # require a 0x prefix. This is necessary to avoid a genuine ambiguity
+        # with some short-form options -- if we allowed unprefixed hex, then is
+        # "-f" the short form of --float, or the hex value -15?
+        elif any([c.isdigit() for c in arg]):
+            is_positional = True
+        if is_positional:
+            pos_args.append(arg)
+        else:
+            nonpos_args.append(arg)
+
+    args = parser.parse_args(nonpos_args + ["--"] + pos_args)
 
     if not args.inputs and not args.examples:
         print("Must specify at least one value or --examples")
