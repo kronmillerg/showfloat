@@ -1,5 +1,34 @@
 https://bigfloat.readthedocs.io/en/latest/reference/index.html
 
+
+
+Cool features to implement:
+  - Special options for edge-case constants: max norm, min norm, min subnorm.
+    Check the others from float.h to see if some are useful. (Epsilon??)
+      - For that matter, if the input is one of those constants, maybe print
+        the name?
+            ### INPUT HEX: 0x1.fffffep+127
+            float.h name: FLT_MAX
+            Dec (approx): 3.40282347e+38
+            Hex (%a):     0x1.fffffep+127
+            int10 * ULP:  16777215 * 2**104
+            fpclassify:   FP_NORMAL
+            Bits (hex):   0x7f7fffff
+            Bits (bin):   0 11111110 11111111111111111111111
+        I guess in that case we should accept "FLT_MAX" as input.
+          - Which saves some weird reordering difficulties that would arise if
+            I had a --flt_max, since I'm now hacking up the args before
+            argparse gets to them.
+          - Also, I guess showfloat.py -d FLT_MAX is valid, but maybe give a
+            warning if printing a constant in a different format?
+  - Option for "print out the parameters of this floating-point format". Exp
+    bits, mant bits (stored and w/ leading?), exponents of FLT_MAX FLT_MIN
+    FLT_SUB_MIN, exponent bias.
+
+
+
+===============================================================================
+
 I forget exactly the format I settled on, but the key operations I want are:
 
 String conversions:
@@ -47,27 +76,31 @@ the IEEE representations.
         s * m * pow(2, e)
             give or take whether e is biased and whether m includes leading 1
 
+===============================================================================
 
+Refactoring splitting, packing, and showing.
 
-Cool features to implement:
-  - Special options for edge-case constants: max norm, min norm, min subnorm.
-    Check the others from float.h to see if some are useful. (Epsilon??)
-      - For that matter, if the input is one of those constants, maybe print
-        the name?
-            ### INPUT HEX: 0x1.fffffep+127
-            Dec (approx): 3.40282347e+38
-            Hex (%a):     0x1.fffffep+127
-            int10 * ULP:  16777215 * 2**104
-            float.h name: FLT_MAX
-            fpclassify:   FP_NORMAL
-            Bits (hex):   0x7f7fffff
-            Bits (bin):   0 11111110 11111111111111111111111
-        I guess in that case we should accept "FLT_MAX" as input.
-          - Which saves some weird reordering difficulties that would arise if
-            I had a --flt_max, since I'm now hacking up the args before
-            argparse gets to them.
-          - Also, I guess showfloat.py -d FLT_MAX is valid, but maybe give a
-            warning if printing a constant in a different format?
-  - Option for "print out the parameters of this floating-point format". Exp
-    bits, mant bits (stored and w/ leading?), exponents of FLT_MAX FLT_MIN
-    FLT_SUB_MIN, exponent bias.
+Split:
+    copysign -> sign
+    check for inf/nan and special-case
+    Special case exponent if zero
+    floor(log2) -> exponent
+        correct for subnormals if too low
+    Subtract num mant bits -> log2(ulp)
+    Divide by ulp -> represented integer mantissa
+    Subtract leading bit, if not explicit and also not subnormal -> stored mant
+
+Pack:
+    Check for inf/nan and special case
+    Add leading bit to mantissa if not subnormal and not part of format
+    unbias expo / adjust by mant bits -> log2(ulp)
+    (-1)**sign * mant * ulp
+        (or copysign if this doesn't handle -0, but it should)
+
+Show:
+    Check for inf/nan
+    Decimal: basically compute num digits based on usefulMantBits,
+        log2OfMinSubnorm, then %g
+    Hex:
+        Shift _represented_ integer mant based on represented mant bits % 4
+

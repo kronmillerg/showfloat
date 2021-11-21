@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse
 import bigfloat
 import math
@@ -324,6 +326,11 @@ def showFloat(value, sem, fltFormat, exactDecimal=False):
 def ceildiv(x, y):
     return (x + y - 1) // y
 
+
+
+###############################################################################
+# Converting between value and (sign, expo, mant)
+
 def splitSEM(value, fltFormat):
 
     signBit = 1 if bigfloat.copysign(1, value) < 0 else 0
@@ -373,19 +380,8 @@ def splitSEM(value, fltFormat):
 
     return (signBit, biasedExpo, mant)
 
-def mkContext(fltFormat):
-    # bigfloat precision counts the leading bit, whether stored or not
-    precision = fltFormat.usefulMantBits + 1
-    # bigfloat normalizes floats as [0.5..1.0) * 2**exponent, whereas IEEE
-    # representations are [1.0..2.0) * 2**exponent. So emax for bigfloat is one
-    # greater than the max as it would be represented in an IEEE format.
-    emax = fltFormat.expOfFltMax + 1
-    # Likewise for emin, but bigfloat's emin also takes into account
-    # subnormals: emin is the value such that 0.5 * 2 ** emin is the smallest
-    # subnormal.
-    emin = fltFormat.log2OfMinSubnorm + 1
-    return bigfloat.Context(precision=precision, emin=emin, emax=emax,
-        subnormalize=True)
+###############################################################################
+# Float formats - basics
 
 class FloatFormat(object):
     """
@@ -394,7 +390,7 @@ class FloatFormat(object):
     might store its leading bit explicitly, because Intel.
     """
 
-    def __init__(self, expBits, mantBits, explicitLeadingBit=False):
+    def __init__(self, expBits, mantBits, explicitLeadingBit=False, **kwargs):
         self.expBits = expBits
         self.mantBits = mantBits
         self.explicitLeadingBit = explicitLeadingBit
@@ -405,6 +401,8 @@ class FloatFormat(object):
         self.usefulMantBits = mantBits
         if explicitLeadingBit:
             self.usefulMantBits -= 1
+
+        super(FloatFormat, self).__init__(**kwargs)
 
     @property
     def bias(self):
@@ -440,11 +438,27 @@ class FloatFormat(object):
         # in the bottom bit of the mantissa, with the same exponent.
         return self.expOfFltMin - self.usefulMantBits
 
+# TODO member function/property?
+def mkContext(fltFormat):
+    # bigfloat precision counts the leading bit, whether stored or not
+    precision = fltFormat.usefulMantBits + 1
+    # bigfloat normalizes floats as [0.5..1.0) * 2**exponent, whereas IEEE
+    # representations are [1.0..2.0) * 2**exponent. So emax for bigfloat is one
+    # greater than the max as it would be represented in an IEEE format.
+    emax = fltFormat.expOfFltMax + 1
+    # Likewise for emin, but bigfloat's emin also takes into account
+    # subnormals: emin is the value such that 0.5 * 2 ** emin is the smallest
+    # subnormal.
+    emin = fltFormat.log2OfMinSubnorm + 1
+    return bigfloat.Context(precision=precision, emin=emin, emax=emax,
+        subnormalize=True)
+
 BINARY32  = FloatFormat( 8, 23, False)
 BINARY64  = FloatFormat(11, 52, False)
 INTEL80   = FloatFormat(15, 64, True)
 HALF_PREC = FloatFormat( 5, 10, False)
 
+###############################################################################
 
 if __name__ == "__main__":
     main()
