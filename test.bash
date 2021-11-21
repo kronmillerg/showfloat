@@ -11,7 +11,7 @@ failures=0
 do1() {
     ((testno++))
     cat > cor.txt
-    python "$my_dir"/showfloat.py "$@" > got.txt
+    python "$my_dir"/showfloat.py "$@" &> got.txt
     if ! diff -u cor.txt got.txt > diff.txt; then
         if ((failures > 0)); then
             echo
@@ -27,7 +27,7 @@ do1 -0x1.55554p-126 <<END
 ### INPUT HEX: -0x1.55554p-126
 Dec (approx): -1.56732431e-38
 Hex (%a):     -0x1.55554p-126
-int10 * ULP:  11184800 * 2**-149
+int10 * ULP:  -11184800 * 2**-149
 fpclassify:   FP_NORMAL
 Bits (hex):   0x80aaaaa0
 Bits (bin):   1 00000001 01010101010101010100000
@@ -37,7 +37,7 @@ do1 --exact -0x1.55554p-126 <<END
 ### INPUT HEX: -0x1.55554p-126
 Dec (exact):  -1.5673243063780213974867730643181053945143473767500453603948457341650535301624813655507750809192657470703125e-38
 Hex (%a):     -0x1.55554p-126
-int10 * ULP:  11184800 * 2**-149
+int10 * ULP:  -11184800 * 2**-149
 fpclassify:   FP_NORMAL
 Bits (hex):   0x80aaaaa0
 Bits (bin):   1 00000001 01010101010101010100000
@@ -97,7 +97,7 @@ do1 -0 <<END
 ### INPUT DECIMAL: -0
 Dec (approx): -0
 Hex (%a):     -0x0p+0
-int10 * ULP:  0 * 2**-149
+int10 * ULP:  -0 * 2**-149
 fpclassify:   FP_ZERO
 Bits (hex):   0x80000000
 Bits (bin):   1 00000000 00000000000000000000000
