@@ -167,7 +167,7 @@ def showFloat(fltVal, exactDecimal=False):
     # TODO apply this context
     context = mkContext(fltVal.format)
 
-    # TODO add some self-checks to these:
+    # TODO add some self-checks to these (but probably not in this function):
     #   - decimal repr, evaluated in original context (round to nearest) should
     #     parse back to exact same val (unless NaN)
     #   - hex val ditto, but also in a context with greater precision and/or
@@ -184,8 +184,32 @@ def showFloat(fltVal, exactDecimal=False):
     #         bit of the mantissa, and by that definition powers of 2 are 1/2
     #         ulp from their nextDown.
 
-    # Decimal value
+    # TODO special-case inf, NaN
+
+    decStr = formatDecimal(fltVal, exactDecimal)
     if exactDecimal:
+        print("Dec (exact):  {}".format(decStr))
+    else:
+        print("Dec (approx): {}".format(decStr))
+
+    print("Hex (%a):     {}".format(formatHex(fltVal)))
+    print("int10 * ULP:  {sgn}{mant:d} * 2**{expo:d}" \
+        .format(sgn  = "-" if fltVal.signbit else "",
+                mant = fltVal.reprIntMant,
+                expo = fltVal.log2Ulp))
+    print("fpclassify:   {}".format(getFpClassifyStr(fltVal)))
+    print("Bits (hex):   {}".format(formatBitsAsHex(fltVal)))
+    print("Bits (bin):   {sgn:01b} {expo:0{expoLen}b} {mant:0{mantLen}b}" \
+        .format(sgn     = fltVal.signbit,
+                expo    = fltVal.storedExpo,
+                expoLen = fltVal.format.expBits,
+                mant    = fltVal.storedMant,
+                mantLen = fltVal.format.mantBits))
+
+def formatDecimal(fltVal, exact):
+    assert bigfloat.is_finite(fltVal.value)
+
+    if exact:
         # I think a longest exact base-10 representation for a floating-point
         # format is:
         #     nextDown(2*FLT_MIN)
@@ -215,8 +239,7 @@ def showFloat(fltVal, exactDecimal=False):
             numSigFigs -= 1
         assert numSigFigs <= mostDigits
 
-        # Actually print it
-        print("Dec (exact):  {}".format(exactString))
+        return exactString
     else:
         # The C standard says that this is the number of base-10 digits
         # required to serialize all floating-point values of a given precision
@@ -225,36 +248,43 @@ def showFloat(fltVal, exactDecimal=False):
         # committee.
         prec = int(math.ceil(1 +
             (1 + fltVal.format.usefulMantBits)*math.log(2, 10)))
-        print("Dec (approx): {val:.{prec}g}".format(val=fltVal.value,
-            prec=prec))
+        return "{val:.{prec}g}".format(val=fltVal.value, prec=prec)
 
-    # TODO skip this next part for inf/nan. Actually, maybe just special case
-    # the non-bits parts for inf/nan at a higher level? May want to put the
-    # parts in separate functions anyway just to save on indents once I add a
-    # 'with context'.
-    #   - Also, I might have to fabricate a canonical repr for NaNs.
+def formatHex(fltVal):
+    """
+    Format fltVal as a C-style hex float ("%a"), normalized so that:
+      - If fltVal is normal, the digit left of the radix point is 1.
+      - If fltVal is subnormal, the displayed exponent is the same as for the
+        smallest normal value.
+    """
 
-    # Hex (C-style "%a")
-    # BigFloat's docs doesn't seem to specify how .hex() or "%a" normalizes,
-    # and empirically they are different from each other and _neither_
-    # normalizes the way I want! Okay, fine, I'll do it myself.
+    # This normalization matches the libc implementations I'm familiar with,
+    # and is the one I find most intuitive. Unfortunately, empirically neither
+    # BigFloat.hex() nor its "{:a}" formatting logic normalizes in this manner
+    # (even just for normals), so we have to implement it manually.
+    # Fortunately, converting a float to a hex string is pretty simple, since
+    # we can get the digits by formatting the mantissa as an integer (ignoring
+    # the exponent entirely).
 
-    # Enough hex digs for a leading 1 (which wastes 3 bits) and then the rest
-    # of the mantissa.
+    # Shift the mantissa so its leading bit is the lsb of a hex digit.
     numHexDigs = ceildiv(fltVal.format.totalMantBits + 3, 4)
     mantShift = (1 + 4*(numHexDigs - 1)) - fltVal.format.totalMantBits
     assert 0 <= mantShift < 4
     shiftedMant = fltVal.reprIntMant << mantShift
+
     rawHexDigs = "{digs:0{count}x}".format(digs=shiftedMant, count=numHexDigs)
     assert len(rawHexDigs) == numHexDigs
     # FIXME: Should be "if leading bit of mantissa is 1". This check is wrong
     # for unnormals and pseudo-denormals.
     if fltVal.storedExpo > 0:
         assert rawHexDigs[0] == '1'
+
     # Trim 0s from the right. Python's <float>.hex() and BigFloat.hex() don't
     # do this, but at least some libc implementations do.
     while len(rawHexDigs) > 1 and rawHexDigs[-1] == '0':
         rawHexDigs = rawHexDigs[:-1]
+
+    # Assemble the string.
     hexStr = ""
     if fltVal.signbit:
         hexStr += '-'
@@ -269,49 +299,37 @@ def showFloat(fltVal, exactDecimal=False):
         # more faithful to the representation, but the former is more friendly
         # to the user and is what %a actually does (at least the implementation
         # I know; I forget if it's required).
+        assert rawHexDigs == "0"
         hexStr += "+0"
     else:
         hexStr += "{:+d}".format(fltVal.reprExpo)
-    print("Hex (%a):     {}".format(hexStr))
+    return hexStr
 
-    print("int10 * ULP:  {sgn}{mant:d} * 2**{expo:d}" \
-        .format(sgn  = "-" if fltVal.signbit else "",
-                mant = fltVal.reprIntMant,
-                expo = fltVal.log2Ulp))
-
+def getFpClassifyStr(fltVal):
     # TODO unnormals / pseudo-denormals for explicitLeadingBit.
     # Note: likely source for those terms is:
     #     https://www.intel.com/content/www/us/en/architecture-and-technology/64-ia-32-architectures-software-developer-vol-1-manual.html#
     # section 8.2.2 / Table 8-3, which looks to be the source for the Wikipedia
     # article ("Extended precision") where I got the terms from.
-    fpcls = "** ERROR **"
     if bigfloat.is_nan(fltVal.value):
-        fpcls = "FP_NAN"
+        return "FP_NAN"
     elif bigfloat.is_inf(fltVal.value):
-        fpcls = "FP_INFINITE"
+        return "FP_INFINITE"
     elif bigfloat.is_zero(fltVal.value):
-        fpcls = "FP_ZERO"
+        return "FP_ZERO"
     elif fltVal.storedExpo == 0:
-        fpcls = "FP_SUBNORMAL"
+        return "FP_SUBNORMAL"
     else:
-        fpcls = "FP_NORMAL"
-    print("fpclassify:   {}".format(fpcls))
+        return "FP_NORMAL"
 
+def formatBitsAsHex(fltVal):
     allBits = fltVal.signbit
     allBits <<= fltVal.format.expBits
     allBits |= fltVal.storedExpo
     allBits <<= fltVal.format.mantBits
     allBits |= fltVal.storedMant
     numDigs = ceildiv(1 + fltVal.format.expBits + fltVal.format.mantBits, 4)
-    print("Bits (hex):   0x{val:0{count}x}".format(val=allBits, count=numDigs))
-
-    print("Bits (bin):   {sgn:01b} {expo:0{expoLen}b} {mant:0{mantLen}b}" \
-        .format(sgn = fltVal.signbit,
-                expo = fltVal.storedExpo,
-                expoLen = fltVal.format.expBits,
-                mant = fltVal.storedMant,
-                mantLen = fltVal.format.mantBits))
-
+    return "0x{val:0{count}x}".format(val=allBits, count=numDigs)
 
 
 
