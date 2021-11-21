@@ -145,13 +145,6 @@ def selfTest():
 ###############################################################################
 # Formatting floats (and various properties of them)
 
-# FIXME: This and some helpers need to be wrapped in:
-#     with mkContext(fltFormat):
-# or possibly a context with wider range but the same precision, to simplify
-# some calculations that might cross over FLT_MAX and then back? Might cause
-# problems on the subnormal end, though. Maybe better to only increase the
-# range for individual calculations where I know it's needed.
-
 def showFloat(fltVal, exactDecimal=False):
     """
     Example format:
@@ -202,7 +195,7 @@ def showFloat(fltVal, exactDecimal=False):
                     expo    = fltVal.storedExpo,
                     expoLen = fltVal.format.expBits,
                     mant    = fltVal.storedMant,
-                    mantLen = fltVal.format.mantBits))
+                    mantLen = fltVal.format.storedMantBits))
 
 def formatDecimal(fltVal, exact):
     assert bigfloat.is_finite(fltVal.value)
@@ -212,12 +205,12 @@ def formatDecimal(fltVal, exact):
         # format is:
         #     nextDown(2*FLT_MIN)
         #   = 2*FLT_MIN - MIN_FLT_SUBNORM
-        #   = (2**(1 + usefulMantBits) - 1) * 2**log2OfMinSubnorm
+        #   = (2**(1 + trailingMantBits) - 1) * 2**log2OfMinSubnorm
         # whose decimal digits are the same as:
-        #     (2**(1 + usefulMantBits) - 1) * 5**-log2OfMinSubnorm
+        #     (2**(1 + trailingMantBits) - 1) * 5**-log2OfMinSubnorm
         # In case I'm wrong, format it with twice that many digits and then
         # assert that the number of sig figs is within my bound.
-        mostDigits = len(str((2**(1 + fltVal.format.usefulMantBits) - 1) *
+        mostDigits = len(str((2**(1 + fltVal.format.trailingMantBits) - 1) *
             5**-fltVal.format.log2OfMinSubnorm))
 
         # Use %g mostly because it omits extra trailing zeros after the decimal
@@ -245,7 +238,7 @@ def formatDecimal(fltVal, exact):
         # have the background to prove this myself, but I'll trust the standard
         # committee.
         prec = int(math.ceil(1 +
-            (1 + fltVal.format.usefulMantBits)*math.log(2, 10)))
+            (1 + fltVal.format.trailingMantBits)*math.log(2, 10)))
         return "{val:.{prec}g}".format(val=fltVal.value, prec=prec)
 
 def formatHex(fltVal):
@@ -272,10 +265,7 @@ def formatHex(fltVal):
 
     rawHexDigs = "{digs:0{count}x}".format(digs=shiftedMant, count=numHexDigs)
     assert len(rawHexDigs) == numHexDigs
-    # FIXME: Should be "if leading bit of mantissa is 1". This check is wrong
-    # for unnormals and pseudo-denormals.
-    if fltVal.storedExpo > 0:
-        assert rawHexDigs[0] == '1'
+    assert rawHexDigs[0] == str(fltVal.mantLeadingBit)
 
     # Trim 0s from the right. Python's <float>.hex() and BigFloat.hex() don't
     # do this, but at least some libc implementations do.
@@ -324,9 +314,10 @@ def formatBitsAsHex(fltVal):
     allBits = fltVal.signbit
     allBits <<= fltVal.format.expBits
     allBits |= fltVal.storedExpo
-    allBits <<= fltVal.format.mantBits
+    allBits <<= fltVal.format.storedMantBits
     allBits |= fltVal.storedMant
-    numDigs = ceildiv(1 + fltVal.format.expBits + fltVal.format.mantBits, 4)
+    numDigs = ceildiv(1 + fltVal.format.expBits + fltVal.format.storedMantBits,
+        4)
     return "0x{val:0{count}x}".format(val=allBits, count=numDigs)
 
 
@@ -386,7 +377,7 @@ class FloatValue(object):
             abs(x) - nextDown(abs(x))
         in particular not for powers of 2.
         """
-        ret = self.reprExpo - self.format.usefulMantBits
+        ret = self.reprExpo - self.format.trailingMantBits
         if self.storedExpo == 0:
             assert ret == self.format.log2OfMinSubnorm
         # TODO: Other self-checks related to this actually being the ULP:
@@ -400,7 +391,17 @@ class FloatValue(object):
     def reprIntMant(self):
         ret = self.storedMant
         if self.storedExpo != 0 and not self.format.explicitLeadingBit:
-            ret += 2**self.format.mantBits
+            ret += 2**self.format.trailingMantBits
+        return ret
+
+    @property
+    def mantLeadingBit(self):
+        ret = self.reprIntMant >> self.format.trailingMantBits
+        if not self.format.explicitLeadingBit:
+            if self.storedExpo == 0:
+                assert ret == 0
+            else:
+                assert ret == 1
         return ret
 
 def splitSEM(value, fltFormat):
@@ -421,9 +422,6 @@ def splitSEM(value, fltFormat):
     else:
         with bigfloat.RoundTowardNegative:
             expo = bigfloat.floor(bigfloat.log2(value))
-        # TODO logging.debug for all of these, option to enable.
-        #print("value = {}".format(value))
-        #print("bigfloat.log2(value) = {}".format(bigfloat.log2(value)))
         biasedExpo = int(expo + fltFormat.bias)
         if biasedExpo < 1:
             # Subnormal. The value stored is one less than for FLT_MIN, but the
@@ -434,21 +432,20 @@ def splitSEM(value, fltFormat):
 
     # The mantissa as it's stored (an integer value).
     with bigfloat.Context(emax=bigfloat.getcontext().emax +
-            fltFormat.usefulMantBits):
-        mant = value * bigfloat.pow(2, fltFormat.usefulMantBits - expo)
-    #print("value = {}, 2**(mantBits-expo) = {}".format(value, bigfloat.pow(2, usefulMantBits - expo)))
-    #print("mant = {}".format(mant))
+            fltFormat.trailingMantBits):
+        mant = value * bigfloat.pow(2, fltFormat.trailingMantBits - expo)
     assert mant == int(mant)
     mant = int(mant)
+    leadingMantBitPlaceValue = 2**fltFormat.trailingMantBits
     if biasedExpo > 0 and not fltFormat.explicitLeadingBit:
         # The leading bit is implicitly 1 but not stored in the representation;
         # clear it for the sake of reporting the mantissa.
-        mant -= 2**fltFormat.mantBits
-        assert 0 <= mant < 2**fltFormat.mantBits
+        mant -= 2**fltFormat.trailingMantBits
+        assert 0 <= mant < leadingMantBitPlaceValue
     elif biasedExpo > 0:
-        assert 2**fltFormat.mantBits <= mant < 2 * 2**fltFormat.mantBits
+        assert leadingMantBitPlaceValue <= mant < 2 * leadingMantBitPlaceValue
     else:
-        assert 0 <= mant < 2**fltFormat.mantBits
+        assert 0 <= mant < leadingMantBitPlaceValue
 
     return (signBit, biasedExpo, mant)
 
@@ -462,17 +459,18 @@ class FloatFormat(object):
     might store its leading bit explicitly, because Intel.
     """
 
-    def __init__(self, expBits, mantBits, explicitLeadingBit=False, **kwargs):
+    def __init__(self, expBits, storedMantBits, explicitLeadingBit=False,
+                **kwargs):
         self.expBits = expBits
-        self.mantBits = mantBits
+        self.storedMantBits = storedMantBits
         self.explicitLeadingBit = explicitLeadingBit
 
         # TODO shorter name?
         # Or make it 3 values: storedMantBits, totalMantBits, trailingMantBits,
         # so I'm forced to actually specify each time?
-        self.usefulMantBits = mantBits
+        self.trailingMantBits = storedMantBits
         if explicitLeadingBit:
-            self.usefulMantBits -= 1
+            self.trailingMantBits -= 1
 
         super(FloatFormat, self).__init__(**kwargs)
 
@@ -482,7 +480,7 @@ class FloatFormat(object):
 
     @property
     def totalMantBits(self):
-        return self.usefulMantBits + 1
+        return self.trailingMantBits + 1
 
     @property
     def expOfFltMax(self):
@@ -508,12 +506,12 @@ class FloatFormat(object):
         # explicitLeadingBit this is the bit one place value above the stored
         # mantissa. Shifting by the number of mantissa bits (no +/- 1) puts it
         # in the bottom bit of the mantissa, with the same exponent.
-        return self.expOfFltMin - self.usefulMantBits
+        return self.expOfFltMin - self.trailingMantBits
 
 # TODO member function/property?
 def mkContext(fltFormat):
     # bigfloat precision counts the leading bit, whether stored or not
-    precision = fltFormat.usefulMantBits + 1
+    precision = fltFormat.trailingMantBits + 1
     # bigfloat normalizes floats as [0.5..1.0) * 2**exponent, whereas IEEE
     # representations are [1.0..2.0) * 2**exponent. So emax for bigfloat is one
     # greater than the max as it would be represented in an IEEE format.
