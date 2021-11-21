@@ -14,10 +14,16 @@ def main():
     first = True
     for inp in args.inputs:
         context = mkContext(args.format)
+        # TODO this context should maybe be applied by some callees? Or just
+        # have a top-level "process one arg" function which applies it and then
+        # everyone else assumes that's the context on entry.
         with context:
             inputType = "???"
             if args.input_is_bits:
-                raise NotImplementedError("bits input not implemented")
+                # TODO Handle errors gracefully. Make sure the value is
+                # nonnegative and not too large.
+                bits = int(inp, 0)
+                fltVal = FloatValue.fromBits(bits, args.format)
                 inputType = "BITS"
                 # TODO. Require a 0x prefix for hex here. If no 0x, then
                 # (grudgingly) try to parse it as decimal, but print a warning
@@ -41,6 +47,7 @@ def main():
                         if bigfloat.is_nan(value) and NEG_NAN_RE.match(inp):
                             value = bigfloat.copysign(value, -1)
                         inputType = "DECIMAL"
+                    fltVal = FloatValue.fromValue(value, args.format)
                 except ValueError:
                     print("Error: failed to parse input {!r}".format(inp))
                     sys.exit(1)
@@ -53,7 +60,6 @@ def main():
                 print("")
             first = False
             print("### INPUT {}: {}".format(inputType, inp))
-            fltVal = FloatValue.fromValue(value, args.format)
             showFloat(fltVal, exactDecimal=args.exact)
 
 
@@ -386,15 +392,22 @@ class FloatValue(object):
 
     @classmethod
     def fromValue(cls, value, fltFormat, **kwargs):
-        sign, expo, mant = splitSEM(value, fltFormat)
+        sign, expo, mant = valToSEM(value, fltFormat)
         if bigfloat.is_nan(value):
             kwargs["otherBitsPossible"] = True
         return cls(fltFormat, value, sign, expo, mant, **kwargs)
 
-    #@classmethod
-    #def fromSEM(cls, sign, expo, mant, fltFormat, **kwargs):
-    #    value = packSEM(sign, expo, mant, fltFormat)
-    #    return cls(fltFormat, value, sign, expo, mant, **kwargs)
+    @classmethod
+    def fromBits(cls, bits, fltFormat, **kwargs):
+        mant = bits & ((1 << fltFormat.storedMantBits) - 1)
+        bits >>= fltFormat.storedMantBits
+        expo = bits & ((1 << fltFormat.expBits) - 1)
+        bits >>= fltFormat.expBits
+        sign = bits
+        assert sign == 0 or sign == 1
+
+        value = bitsToVal(sign, expo, mant, fltFormat)
+        return cls(fltFormat, value, sign, expo, mant, **kwargs)
 
     @property
     def sign(self):
@@ -456,12 +469,12 @@ class FloatValue(object):
                 assert ret == 1
         return ret
 
-def splitSEM(value, fltFormat):
+def valToSEM(value, fltFormat):
     signBit = 1 if bigfloat.copysign(1, value) < 0 else 0
     value = bigfloat.abs(value)
 
     if not bigfloat.is_finite(value):
-        expo = 2**fltFormat.expBits - 1
+        expo = fltFormat.storedExpInfNan
         mant = 0
         # Many NaN representations are possible; we just have to pick one. On
         # at least some targets, the canonical NaN has a 1 at the top of the
@@ -515,6 +528,34 @@ def splitSEM(value, fltFormat):
 
     return (signBit, biasedExpo, mant)
 
+def bitsToVal(signBit, storedExpo, storedMant, fltFormat):
+    sign = (-1) ** signBit
+
+    if storedExpo == fltFormat.storedExpInfNan:
+        # Ignore explicit leading bit for purposes of determining inf vs. nan.
+        # See [Intel SDM:BA], tables 4-3 and 8-3. If the leading bit is not
+        # set, then it's a pseudo-NaN or pseudo-infinity; that will be handled
+        # elsewhere.
+        trailingMant = storedMant
+        if fltFormat.explicitLeadingBit:
+            trailingMant &= ((1 << fltFormat.trailingMantBits) - 1)
+        if trailingMant == 0:
+            return bigfloat.copysign(bigfloat.BigFloat("inf"), sign)
+        else:
+            return bigfloat.copysign(bigfloat.BigFloat("nan"), sign)
+
+    intMant = storedMant
+    if not fltFormat.explicitLeadingBit and storedExpo != 0:
+        # Add implicit leading mantissa bit
+        intMant += (1 << fltFormat.trailingMantBits)
+
+    log2Ulp = storedExpo - fltFormat.bias - fltFormat.trailingMantBits
+    if storedExpo == 0:
+        log2Ulp += 1
+        assert log2Ulp == fltFormat.log2OfMinSubnorm
+
+    return sign * bigfloat.BigFloat(intMant) * bigfloat.exp2(log2Ulp)
+
 ###############################################################################
 # Float formats - basics
 
@@ -547,6 +588,10 @@ class FloatFormat(object):
     @property
     def totalMantBits(self):
         return self.trailingMantBits + 1
+
+    @property
+    def storedExpInfNan(self):
+        return 2**self.expBits - 1
 
     @property
     def expOfFltMax(self):

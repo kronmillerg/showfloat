@@ -149,6 +149,16 @@ Example bits
        (bin): 1 11111111 10000000000000000000000
 END
 
+do1 --bits 0x4b16b43f <<END
+### INPUT BITS: 0x4b16b43f
+Dec (approx): 9876543
+Hex (%a):     0x1.2d687ep+23
+int10 * ULP:  9876543 * 2**0
+fpclassify:   FP_NORMAL
+Bits (hex):   0x4b16b43f
+Bits (bin):   0 10010110 00101101011010000111111
+END
+
 
 
 popd > /dev/null
