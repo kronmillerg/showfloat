@@ -164,9 +164,6 @@ def showFloat(fltVal, exactDecimal=False):
     Bits (bin):   0 01111111 11010000000000000000000
     """
 
-    # TODO apply this context
-    context = mkContext(fltVal.format)
-
     # TODO add some self-checks to these (but probably not in this function):
     #   - decimal repr, evaluated in original context (round to nearest) should
     #     parse back to exact same val (unless NaN)
@@ -184,27 +181,28 @@ def showFloat(fltVal, exactDecimal=False):
     #         bit of the mantissa, and by that definition powers of 2 are 1/2
     #         ulp from their nextDown.
 
-    # TODO special-case inf, NaN
+    with mkContext(fltVal.format):
+        # TODO special-case inf, NaN
 
-    decStr = formatDecimal(fltVal, exactDecimal)
-    if exactDecimal:
-        print("Dec (exact):  {}".format(decStr))
-    else:
-        print("Dec (approx): {}".format(decStr))
+        decStr = formatDecimal(fltVal, exactDecimal)
+        if exactDecimal:
+            print("Dec (exact):  {}".format(decStr))
+        else:
+            print("Dec (approx): {}".format(decStr))
 
-    print("Hex (%a):     {}".format(formatHex(fltVal)))
-    print("int10 * ULP:  {sgn}{mant:d} * 2**{expo:d}" \
-        .format(sgn  = "-" if fltVal.signbit else "",
-                mant = fltVal.reprIntMant,
-                expo = fltVal.log2Ulp))
-    print("fpclassify:   {}".format(getFpClassifyStr(fltVal)))
-    print("Bits (hex):   {}".format(formatBitsAsHex(fltVal)))
-    print("Bits (bin):   {sgn:01b} {expo:0{expoLen}b} {mant:0{mantLen}b}" \
-        .format(sgn     = fltVal.signbit,
-                expo    = fltVal.storedExpo,
-                expoLen = fltVal.format.expBits,
-                mant    = fltVal.storedMant,
-                mantLen = fltVal.format.mantBits))
+        print("Hex (%a):     {}".format(formatHex(fltVal)))
+        print("int10 * ULP:  {sgn}{mant:d} * 2**{expo:d}" \
+            .format(sgn  = "-" if fltVal.signbit else "",
+                    mant = fltVal.reprIntMant,
+                    expo = fltVal.log2Ulp))
+        print("fpclassify:   {}".format(getFpClassifyStr(fltVal)))
+        print("Bits (hex):   {}".format(formatBitsAsHex(fltVal)))
+        print("Bits (bin):   {sgn:01b} {expo:0{expoLen}b} {mant:0{mantLen}b}" \
+            .format(sgn     = fltVal.signbit,
+                    expo    = fltVal.storedExpo,
+                    expoLen = fltVal.format.expBits,
+                    mant    = fltVal.storedMant,
+                    mantLen = fltVal.format.mantBits))
 
 def formatDecimal(fltVal, exact):
     assert bigfloat.is_finite(fltVal.value)
