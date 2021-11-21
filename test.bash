@@ -23,6 +23,10 @@ do1() {
     rm cor.txt got.txt diff.txt
 }
 
+# These tests were haphazardly thrown together by just taking some examples I'd
+# tried and testing them against whatever output we already gave. Mostly they
+# just verify that the output doesn't change unexpectedly.
+
 do1 -0x1.55554p-126 <<END
 ### INPUT HEX: -0x1.55554p-126
 Dec (approx): -1.56732431e-38
@@ -102,6 +106,50 @@ fpclassify:   FP_ZERO
 Bits (hex):   0x80000000
 Bits (bin):   1 00000000 00000000000000000000000
 END
+
+
+# These tests were written intentionally. Hopefully someday all the tests will
+# be below this line.
+
+do1 inf <<END
+### INPUT DECIMAL: inf
+Dec (approx): inf
+Hex (%a):     inf
+fpclassify:   FP_INFINITE
+Bits (hex):   0x7f800000
+Bits (bin):   0 11111111 00000000000000000000000
+END
+
+do1 -inf <<END
+### INPUT DECIMAL: -inf
+Dec (approx): -inf
+Hex (%a):     -inf
+fpclassify:   FP_INFINITE
+Bits (hex):   0xff800000
+Bits (bin):   1 11111111 00000000000000000000000
+END
+
+do1 nan <<END
+### INPUT DECIMAL: nan
+Dec (approx): nan
+Hex (%a):     nan
+fpclassify:   FP_NAN
+Example bits
+       (hex): 0x7fc00000
+       (bin): 0 11111111 10000000000000000000000
+END
+
+do1 -nan <<END
+### INPUT DECIMAL: -nan
+Dec (approx): -nan
+Hex (%a):     -nan
+fpclassify:   FP_NAN
+Example bits
+       (hex): 0xffc00000
+       (bin): 1 11111111 10000000000000000000000
+END
+
+
 
 popd > /dev/null
 rmdir "$tempdir"

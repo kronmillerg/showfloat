@@ -3,6 +3,7 @@
 import argparse
 import bigfloat
 import math
+import re
 import sys
 
 def main():
@@ -34,6 +35,11 @@ def main():
                     else:
                         value = bigfloat.BigFloat.exact(inp,
                             precision=context.precision)
+                        # bigfloat doesn't preserve the sign bit of "-nan",
+                        # even though it is able to represent a NaN with the
+                        # sign bit set.
+                        if bigfloat.is_nan(value) and NEG_NAN_RE.match(inp):
+                            value = bigfloat.copysign(value, -1)
                         inputType = "DECIMAL"
                 except ValueError:
                     print("Error: failed to parse input {!r}".format(inp))
@@ -51,9 +57,17 @@ def main():
             showFloat(fltVal, exactDecimal=args.exact)
 
 
+NEG_NAN_RE = re.compile("\s*-\s*nan", flags=re.IGNORECASE)
+
 
 def parseArgs():
     parser = argparse.ArgumentParser()
+
+    # Note: be careful adding short forms -i, -n, -a here, since that creates
+    # an ambiguity with the positional arguments -inf and -nan. It's bad enough
+    # that we have a -f.
+    # TODO: Maybe get rid of -f? If float is the default, we don't really need
+    # a short way to specify it.
 
     parser.add_argument("inputs", nargs="*", metavar="VALUE",
                         help="values to show")
@@ -86,21 +100,24 @@ def parseArgs():
                         help="print approximate decimal representation " +
                             "(sufficient to recover value)")
 
-    # Now do the hard part of the argument parsing ourself, because argparse
-    # doesn't seem to have a (documented) way to treat something like -1.2e3 as
-    # a positional argument. Instead, it would interpret that as an optional
-    # argument, then give an error because no such argument is defined.
-    # argparse actually has a heuristic specifically for identifying negative
-    # numbers; it's just not smart enough to recognize all the floating-point
-    # formats this script accepts. An alternate way to implement this would be
-    # by overriding parser._negative_number_matcher, but since that's not
-    # documented, I'm hesitant to take that approach. See:
+    # Now sort out positional from non-positional arguments ourself, because
+    # the rules are too bizarre for argparse to handle on its own. Positional
+    # arguments can have a negative sign in front, in which case they'll look
+    # like optional arguments. Argparse has a heuristic specifically for
+    # identifying negative numbers, so it can handle simple cases like -123.
+    # See:
     #     https://docs.python.org/3/library/argparse.html#arguments-containing
+    # But once you get into exponential notation or (especially) hex float
+    # formats, argparse's negative-number regex doesn't match all the formats
+    # we want to accept. Even worse, we accept "-inf" and "-nan" as positional
+    # arguments, even though they consist only of letters! In retrospect, maybe
+    # having short-form arguments to this script was a mistake (especially -f).
     #
-    # The approach here is to split arguments into two groups -- non-positional
-    # args and positional args -- move all the positional args to the end, and
-    # insert a "--" before them. This forces argparse to treat them as
-    # positional, nevermind any leading dashes.
+    # My approach is to partition the arguments into non-positionals and
+    # positionals, insert a "--" between them, and then pass them into
+    # argparse. An alternative way to do this would be to override
+    # parser._negative_number_matcher, but since that's not documented, I'm
+    # hesitant to take that approach.
     nonpos_args = []
     pos_args = []
     for i in range(1, len(sys.argv)):
@@ -119,6 +136,10 @@ def parseArgs():
         # with some short-form options -- if we allowed unprefixed hex, then is
         # "-f" the short form of --float, or the hex value -15?
         elif any([c.isdigit() for c in arg]):
+            is_positional = True
+        elif "inf" in arg.lower():
+            is_positional = True
+        elif "nan" in arg.lower():
             is_positional = True
         if is_positional:
             pos_args.append(arg)
@@ -175,30 +196,33 @@ def showFloat(fltVal, exactDecimal=False):
     #         ulp from their nextDown.
 
     with mkContext(fltVal.format):
-        # TODO special-case inf, NaN
-
         decStr = formatDecimal(fltVal, exactDecimal)
         if exactDecimal:
             print("Dec (exact):  {}".format(decStr))
         else:
             print("Dec (approx): {}".format(decStr))
 
-        print("Hex (%a):     {}".format(formatHex(fltVal)))
-        print("int10 * ULP:  {sgn}{mant:d} * 2**{expo:d}" \
-            .format(sgn  = "-" if fltVal.signbit else "",
-                    mant = fltVal.reprIntMant,
-                    expo = fltVal.log2Ulp))
-        print("fpclassify:   {}".format(getFpClassifyStr(fltVal)))
-        print("Bits (hex):   {}".format(formatBitsAsHex(fltVal)))
-        print("Bits (bin):   {sgn:01b} {expo:0{expoLen}b} {mant:0{mantLen}b}" \
-            .format(sgn     = fltVal.signbit,
-                    expo    = fltVal.storedExpo,
-                    expoLen = fltVal.format.expBits,
-                    mant    = fltVal.storedMant,
-                    mantLen = fltVal.format.storedMantBits))
+        print(    "Hex (%a):     {}".format(formatHex(fltVal)))
+
+        if bigfloat.is_finite(fltVal.value):
+            print("int10 * ULP:  {sgn}{mant:d} * 2**{expo:d}" \
+                .format(sgn  = "-" if fltVal.signbit else "",
+                        mant = fltVal.reprIntMant,
+                        expo = fltVal.log2Ulp))
+
+        print(    "fpclassify:   {}".format(getFpClassifyStr(fltVal)))
+
+        if fltVal.otherBitsPossible:
+            print("Example bits")
+            print("       (hex): {}".format(formatBitsAsHex(fltVal)))
+            print("       (bin): {}".format(formatBitsAsBin(fltVal)))
+        else:
+            print("Bits (hex):   {}".format(formatBitsAsHex(fltVal)))
+            print("Bits (bin):   {}".format(formatBitsAsBin(fltVal)))
 
 def formatDecimal(fltVal, exact):
-    assert bigfloat.is_finite(fltVal.value)
+    if not bigfloat.is_finite(fltVal.value):
+        return formatInfNan(fltVal)
 
     if exact:
         # I think a longest exact base-10 representation for a floating-point
@@ -257,6 +281,9 @@ def formatHex(fltVal):
     # we can get the digits by formatting the mantissa as an integer (ignoring
     # the exponent entirely).
 
+    if not bigfloat.is_finite(fltVal.value):
+        return formatInfNan(fltVal)
+
     # Shift the mantissa so its leading bit is the lsb of a hex digit.
     numHexDigs = ceildiv(fltVal.format.totalMantBits + 3, 4)
     mantShift = (1 + 4*(numHexDigs - 1)) - fltVal.format.totalMantBits
@@ -293,12 +320,20 @@ def formatHex(fltVal):
         hexStr += "{:+d}".format(fltVal.reprExpo)
     return hexStr
 
+def formatInfNan(fltVal):
+    signchar = "-" if fltVal.signbit else ""
+    if bigfloat.is_nan(fltVal.value):
+        return signchar + "nan"
+    elif bigfloat.is_inf(fltVal.value):
+        return signchar + "inf"
+    else:
+        assert False
+
 def getFpClassifyStr(fltVal):
     # TODO unnormals / pseudo-denormals for explicitLeadingBit.
-    # Note: likely source for those terms is:
-    #     https://www.intel.com/content/www/us/en/architecture-and-technology/64-ia-32-architectures-software-developer-vol-1-manual.html#
-    # section 8.2.2 / Table 8-3, which looks to be the source for the Wikipedia
-    # article ("Extended precision") where I got the terms from.
+    # Note: likely source for those terms is [Intel SDM:BA], section 8.2.2 /
+    # Table 8-3, which looks to be the source for the Wikipedia article
+    # ("Extended precision") where I got the terms from.
     if bigfloat.is_nan(fltVal.value):
         return "FP_NAN"
     elif bigfloat.is_inf(fltVal.value):
@@ -320,27 +355,40 @@ def formatBitsAsHex(fltVal):
         4)
     return "0x{val:0{count}x}".format(val=allBits, count=numDigs)
 
+def formatBitsAsBin(fltVal):
+    return "{sgn:01b} {expo:0{expoLen}b} {mant:0{mantLen}b}" \
+        .format(sgn     = fltVal.signbit,
+                expo    = fltVal.storedExpo,
+                expoLen = fltVal.format.expBits,
+                mant    = fltVal.storedMant,
+                mantLen = fltVal.format.storedMantBits)
+
 
 
 ###############################################################################
 # Converting between value and (sign, expo, mant)
 
 class FloatValue(object):
-    def __init__(self, fltFormat, value, sign, expo, mant, **kwargs):
-        self.format     = fltFormat
-        self.value      = value
-        self.signbit    = sign
-        self.storedExpo = expo
-        self.storedMant = mant
+    def __init__(self, fltFormat, value, sign, expo, mant,
+            otherBitsPossible=False, **kwargs):
+        self.format            = fltFormat
+        self.value             = value
+        self.signbit           = sign
+        self.storedExpo        = expo
+        self.storedMant        = mant
+        self.otherBitsPossible = otherBitsPossible
         super(FloatValue, self).__init__(**kwargs)
 
-        assert self.sign * self.reprIntMant * bigfloat.exp2(self.log2Ulp) == \
-            self.value
+        if bigfloat.is_finite(self.value):
+            assert self.sign * self.reprIntMant * \
+                bigfloat.exp2(self.log2Ulp) == self.value
         # TODO other self-tests?
 
     @classmethod
     def fromValue(cls, value, fltFormat, **kwargs):
         sign, expo, mant = splitSEM(value, fltFormat)
+        if bigfloat.is_nan(value):
+            kwargs["otherBitsPossible"] = True
         return cls(fltFormat, value, sign, expo, mant, **kwargs)
 
     #@classmethod
@@ -360,6 +408,7 @@ class FloatValue(object):
         it is the exponent "represented" by the given value, not a simple
         floor(log2(value)).
         """
+        assert bigfloat.is_finite(self.value)
         ret = self.storedExpo - self.format.bias
         if self.storedExpo == 0:
             ret += 1
@@ -377,6 +426,7 @@ class FloatValue(object):
             abs(x) - nextDown(abs(x))
         in particular not for powers of 2.
         """
+        assert bigfloat.is_finite(self.value)
         ret = self.reprExpo - self.format.trailingMantBits
         if self.storedExpo == 0:
             assert ret == self.format.log2OfMinSubnorm
@@ -389,6 +439,7 @@ class FloatValue(object):
 
     @property
     def reprIntMant(self):
+        assert bigfloat.is_finite(self.value)
         ret = self.storedMant
         if self.storedExpo != 0 and not self.format.explicitLeadingBit:
             ret += 2**self.format.trailingMantBits
@@ -396,6 +447,7 @@ class FloatValue(object):
 
     @property
     def mantLeadingBit(self):
+        assert bigfloat.is_finite(self.value)
         ret = self.reprIntMant >> self.format.trailingMantBits
         if not self.format.explicitLeadingBit:
             if self.storedExpo == 0:
@@ -405,9 +457,28 @@ class FloatValue(object):
         return ret
 
 def splitSEM(value, fltFormat):
-
     signBit = 1 if bigfloat.copysign(1, value) < 0 else 0
     value = bigfloat.abs(value)
+
+    if not bigfloat.is_finite(value):
+        expo = 2**fltFormat.expBits - 1
+        mant = 0
+        # Many NaN representations are possible; we just have to pick one. On
+        # at least some targets, the canonical NaN has a 1 at the top of the
+        # mantissa and 0s below it; not sure how common this is but it seems as
+        # good a convention as any.
+        if bigfloat.is_nan(value):
+            mant += 2**(fltFormat.trailingMantBits - 1)
+        # [Intel SDM:BA] The Intel format uses a leading bit of 1 for both inf
+        # and NaN; a NaN has at least one 1 in the trailing bits. (So the
+        # interpretation is the same as what a normal IEEE-style format would
+        # do if the leading bit were implicit). Since that's the only
+        # explicitLeadingBit format we support, use that rule here.
+        if fltFormat.explicitLeadingBit:
+            mant += 2**fltFormat.trailingMantBits
+        return (signBit, expo, mant)
+    elif bigfloat.is_zero(value):
+        return (signBit, 0, 0)
 
     # log2(value) might be within half an ulp below an integer. An example is
     # max subnorm in single precision. Per Python's math.log (double
@@ -415,20 +486,15 @@ def splitSEM(value, fltFormat):
     #     log2(0x0.fffffep-126) = -0x1.f800000b8aa3cp+6
     # To avoid rounding up in that case, set the rounding mode toward negative
     # infinity.
-    if bigfloat.is_zero(value):
-        # TODO combine with subnormal code below
+    with bigfloat.RoundTowardNegative:
+        expo = bigfloat.floor(bigfloat.log2(value))
+    biasedExpo = int(expo + fltFormat.bias)
+    if biasedExpo < 1:
+        # Subnormal. The value stored is one less than for FLT_MIN, but the
+        # represented exponent is the same; the values are continuous because
+        # the leading bit changes to 0 across this threshold.
         biasedExpo = 0
         expo = 1 - fltFormat.bias
-    else:
-        with bigfloat.RoundTowardNegative:
-            expo = bigfloat.floor(bigfloat.log2(value))
-        biasedExpo = int(expo + fltFormat.bias)
-        if biasedExpo < 1:
-            # Subnormal. The value stored is one less than for FLT_MIN, but the
-            # represented exponent is the same; the values are continuous
-            # because the leading bit changes to 0 across this threshold.
-            biasedExpo = 0
-            expo = 1 - fltFormat.bias
 
     # The mantissa as it's stored (an integer value).
     with bigfloat.Context(emax=bigfloat.getcontext().emax +
@@ -533,6 +599,11 @@ HALF_PREC = FloatFormat( 5, 10, False)
 
 def ceildiv(x, y):
     return (x + y - 1) // y
+
+# References:
+#   - [Intel SDM:BA] Intel 64 and IA-32 Architectures Software Developer's
+#     Manual, Volume 1: Basic Architecture. Available online at:
+#         https://www.intel.com/content/www/us/en/architecture-and-technology/64-ia-32-architectures-software-developer-vol-1-manual.html
 
 if __name__ == "__main__":
     main()
