@@ -66,8 +66,7 @@ def main():
                         value = bigfloat.BigFloat.fromhex(inp, context=context)
                         inputType = "HEX"
                     else:
-                        value = bigfloat.BigFloat.exact(inp,
-                            precision=context.precision)
+                        value = bigfloat.BigFloat(inp, context=context)
                         # bigfloat doesn't preserve the sign bit of "-nan",
                         # even though it is able to represent a NaN with the
                         # sign bit set.
