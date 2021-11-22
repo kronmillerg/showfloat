@@ -14,8 +14,8 @@ do1() {
             echo
         fi
         ((failures++))
-        echo "=== Failed test $testno: showfloat $@"
-        cat diff.txt
+        echo "=== Failed test $testno: showfloat $@" | sed -f color.sed
+        sed -f color.sed diff.txt
     fi
     rm cor.txt got.txt diff.txt
 }
@@ -23,7 +23,43 @@ do1() {
 tempdir="$(mktemp -d)"
 pushd "$tempdir" > /dev/null
 
+touch color.sed
+# Only use color escapes if stdout is a tty.
+if [ -t 1 ]; then
+    # Note: which colors look good will depend on exactly how your terminal
+    # displays them and what background color you use. These choices are what
+    # happen to look good on my terminals. Since this is just the test script,
+    # I don't provide a good way to configure it, aside from just hacking up
+    # the tput calls manually.
+    cat > color.sed <<END
+# Failure header in bold red
+/^=== /{
+    s/^/$(tput setaf 1)$(tput bold)/
+    s/$/$(tput sgr0)/
+}
+# Diff/hunk headers in green (disabled)
+#/^\(---\|+++\|@@\) /{
+#    s/^/$(tput setaf 2)/
+#    s/$/$(tput sgr0)/
+#}
+# Don't treat diff header as deletion/insertion
+/^\(---\|+++\)/!{
+    # Deletions in yellow
+    /^-/{
+        s/^/$(tput setaf 3)/
+        s/$/$(tput sgr0)/
+    }
+    # Insertions in cyan
+    /^+/{
+        s/^/$(tput setaf 6)/
+        s/$/$(tput sgr0)/
+    }
+}
+END
+fi
+
 finish() {
+    rm color.sed
     popd > /dev/null
     rmdir "$tempdir"
 
