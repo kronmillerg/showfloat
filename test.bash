@@ -100,18 +100,8 @@ Bits (bin):   1 00000001 01010101010101010100000
 END
 
 
-# These tests were written intentionally. Hopefully someday all the tests will
-# be below this line.
 
-do1 --bits 0x4b16b43f <<END
-### INPUT BITS: 0x4b16b43f
-Dec (approx): 9876543
-Hex (%a):     0x1.2d687ep+23
-int10 * ULP:  9876543 * 2**0
-fpclassify:   FP_NORMAL
-Bits (hex):   0x4b16b43f
-Bits (bin):   0 10010110 00101101011010000111111
-END
+# Remaining tests were written intentionally.
 
 
 
@@ -259,9 +249,153 @@ END
 
 
 ###############################################################################
+# Input from bits (mostly same cases from above)
+
+do1 --bits 0 <<END
+### INPUT BITS: 0
+Dec (approx): 0
+Hex (%a):     0x0p+0
+int10 * ULP:  0 * 2**-149
+fpclassify:   FP_ZERO
+Bits (hex):   0x00000000
+Bits (bin):   0 00000000 00000000000000000000000
+END
+
+do1 --bits 0x80000000 <<END
+### INPUT BITS: 0x80000000
+Dec (approx): -0
+Hex (%a):     -0x0p+0
+int10 * ULP:  -0 * 2**-149
+fpclassify:   FP_ZERO
+Bits (hex):   0x80000000
+Bits (bin):   1 00000000 00000000000000000000000
+END
+
+do1 --bits 1 <<END
+### INPUT BITS: 1
+Dec (approx): 1.40129846e-45
+Hex (%a):     0x0.000002p-126
+int10 * ULP:  1 * 2**-149
+fpclassify:   FP_SUBNORMAL
+Bits (hex):   0x00000001
+Bits (bin):   0 00000000 00000000000000000000001
+END
+
+do1 --bits 0x7fffff <<END
+### INPUT BITS: 0x7fffff
+Dec (approx): 1.17549421e-38
+Hex (%a):     0x0.fffffep-126
+int10 * ULP:  8388607 * 2**-149
+fpclassify:   FP_SUBNORMAL
+Bits (hex):   0x007fffff
+Bits (bin):   0 00000000 11111111111111111111111
+END
+
+do1 --bits 0x80800000 <<END
+### INPUT BITS: 0x80800000
+Dec (approx): -1.17549435e-38
+Hex (%a):     -0x1p-126
+int10 * ULP:  -8388608 * 2**-149
+fpclassify:   FP_NORMAL
+Bits (hex):   0x80800000
+Bits (bin):   1 00000001 00000000000000000000000
+END
+
+# Just some arbitrary hex value, not a duplicate with the previous group of
+# cases
+do1 --bits 0x12345678 <<END
+### INPUT BITS: 0x12345678
+Dec (approx): 5.69045661e-28
+Hex (%a):     0x1.68acfp-91
+int10 * ULP:  11818616 * 2**-114
+fpclassify:   FP_NORMAL
+Bits (hex):   0x12345678
+Bits (bin):   0 00100100 01101000101011001111000
+END
+
+do1 --bits 0x4a7fffff <<END
+### INPUT BITS: 0x4a7fffff
+Dec (approx): 4194303.75
+Hex (%a):     0x1.fffffep+21
+int10 * ULP:  16777215 * 2**-2
+fpclassify:   FP_NORMAL
+Bits (hex):   0x4a7fffff
+Bits (bin):   0 10010100 11111111111111111111111
+END
+
+do1 --bits 0xca800000 <<END
+### INPUT BITS: 0xca800000
+Dec (approx): -4194304
+Hex (%a):     -0x1p+22
+int10 * ULP:  -8388608 * 2**-1
+fpclassify:   FP_NORMAL
+Bits (hex):   0xca800000
+Bits (bin):   1 10010101 00000000000000000000000
+END
+
+do1 --bits 0xff7fffff <<END
+### INPUT BITS: 0xff7fffff
+Dec (approx): -3.40282347e+38
+Hex (%a):     -0x1.fffffep+127
+int10 * ULP:  -16777215 * 2**104
+fpclassify:   FP_NORMAL
+Bits (hex):   0xff7fffff
+Bits (bin):   1 11111110 11111111111111111111111
+END
+
+do1 --bits 0x7f800000 <<END
+### INPUT BITS: 0x7f800000
+Dec (approx): inf
+Hex (%a):     inf
+fpclassify:   FP_INFINITE
+Bits (hex):   0x7f800000
+Bits (bin):   0 11111111 00000000000000000000000
+END
+
+do1 --bits 0xff800000 <<END
+### INPUT BITS: 0xff800000
+Dec (approx): -inf
+Hex (%a):     -inf
+fpclassify:   FP_INFINITE
+Bits (hex):   0xff800000
+Bits (bin):   1 11111111 00000000000000000000000
+END
+
+# The canonical NaN (per the convention this script uses, anyway).
+# Since it was specified by bits, it should NOT show as "example bits".
+do1 --bits 0x7fc00000 <<END
+### INPUT BITS: 0x7fc00000
+Dec (approx): nan
+Hex (%a):     nan
+fpclassify:   FP_NAN
+Bits (hex):   0x7fc00000
+Bits (bin):   0 11111111 10000000000000000000000
+END
+
+# Non-canonical NaNs
+do1 --bits 0x7f801230 <<END
+### INPUT BITS: 0x7f801230
+Dec (approx): nan
+Hex (%a):     nan
+fpclassify:   FP_NAN
+Bits (hex):   0x7f801230
+Bits (bin):   0 11111111 00000000001001000110000
+END
+
+do1 --bits 0xff800001 <<END
+### INPUT BITS: 0xff800001
+Dec (approx): -nan
+Hex (%a):     -nan
+fpclassify:   FP_NAN
+Bits (hex):   0xff800001
+Bits (bin):   1 11111111 00000000000000000000001
+END
+
+
+
+###############################################################################
 
 # TODO other categories:
-#   - Input from bits
 #   - Types: double precision, half, Intel80
 #   - Massive exact-decimal cases
 #   - Special weird explicit-leading-bit cases (unnormal + pseudo-*)
