@@ -47,14 +47,42 @@ def main():
         with context:
             inputType = "???"
             if args.input_is_bits:
-                # TODO Handle errors gracefully. Make sure the value is
-                # nonnegative and not too large.
-                bits = int(inp, 0)
+                try:
+                    bits = int(inp, 0)
+                    if bits < 0:
+                        raise ValueError
+                except ValueError:
+                    # Either < 0 or failed to parse
+                    print("Error: illegal bits {!r}, must be nonnegative "
+                            "integer".format(inp))
+                    # Could try something like the following, but then we might
+                    # want to also check for "-", and "e" and "p" (for
+                    # exponents), and really at that point we should just be
+                    # checking if it parses as a float. Which wouldn't be that
+                    # bad, but seems overkill.
+                    #if "." in inp:
+                    #    printf("Did you mean to specify --value?")
+                    sys.exit(1)
+                # Warn if the bits input looks like decimal. Don't warn if it
+                # looks like a single-digit constant (which would be the same
+                # in hex anyway, minus prefix) or an octal constant (which is
+                # honestly kind of an odd choice as well, but I guess it's
+                # power-of-2 based at least).
+                if inp.isdigit() and not inp.startswith("0") and bits >= 10:
+                    print("Warning: bits {!r} appear to be decimal; recommend "
+                            "hex instead.")
+                if bits >= (1 << args.format.totalBits):
+                    print("Error: bits {inp!r} too large, {gotWidth} bits "
+                            "long but {fmt} format only has {maxWidth} bits"
+                            .format(
+                                inp      = inp,
+                                # Length of binary repr minus "0b"
+                                gotWidth = len(bin(bits)) - 2,
+                                fmt      = args.format,
+                                maxWidth = args.format.totalBits))
+                    sys.exit(1)
                 fltVal = FloatValue.fromBits(bits, args.format)
                 inputType = "BITS"
-                # TODO. Require a 0x prefix for hex here. If no 0x, then
-                # (grudgingly) try to parse it as decimal, but print a warning
-                # if it succeeds.
             else:
                 try:
                     # Note: it's ("0x" in inp) not (inp.startswith("0x"))
@@ -75,13 +103,13 @@ def main():
                         inputType = "DECIMAL"
                     fltVal = FloatValue.fromValue(value, args.format)
                 except ValueError:
-                    print("Error: failed to parse input {!r}".format(inp))
+                    print("Error: failed to parse value {!r}".format(inp))
                     sys.exit(1)
-                    # TODO: Usage and exit. Can we move this parsing into
-                    # parseArgs and store the parsed values in args.inputs?
                 # TODO:
                 #   - Error if the parse succeeded but it's out of range
                 #   - Warn if hex input and it's not exact
+                #       - ...actually maybe note this in decimal as well? Could
+                #         be a "note" in decimal and a "warning" in hex.
             if not first:
                 print("")
             first = False
@@ -99,7 +127,7 @@ def parseArgs():
     # an ambiguity with the positional arguments -inf and -nan. It's bad enough
     # that we have a -f.
     # TODO: Maybe get rid of -f? If float is the default, we don't really need
-    # a short way to specify it.
+    # a short way to specify it. Or could make it -F.
 
     parser.add_argument("inputs", nargs="*", metavar="VALUE",
                         help="values to show")
@@ -598,8 +626,9 @@ class FloatFormat(object):
     might store its leading bit explicitly, because Intel.
     """
 
-    def __init__(self, expBits, storedMantBits, explicitLeadingBit=False,
+    def __init__(self, name, expBits, storedMantBits, explicitLeadingBit=False,
                 **kwargs):
+        self.name = name
         self.expBits = expBits
         self.storedMantBits = storedMantBits
         self.explicitLeadingBit = explicitLeadingBit
@@ -612,6 +641,13 @@ class FloatFormat(object):
             self.trailingMantBits -= 1
 
         super(FloatFormat, self).__init__(**kwargs)
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def totalBits(self):
+        return self.expBits + self.storedMantBits + 1
 
     @property
     def bias(self):
@@ -666,10 +702,10 @@ def mkContext(fltFormat):
     return bigfloat.Context(precision=precision, emin=emin, emax=emax,
         subnormalize=True)
 
-BINARY32  = FloatFormat( 8, 23, False)
-BINARY64  = FloatFormat(11, 52, False)
-INTEL80   = FloatFormat(15, 64, True)
-HALF_PREC = FloatFormat( 5, 10, False)
+BINARY32  = FloatFormat("binary32",  8, 23, False)
+BINARY64  = FloatFormat("binary64", 11, 52, False)
+INTEL80   = FloatFormat("Intel80",  15, 64, True)
+HALF_PREC = FloatFormat("__fp16",    5, 10, False)
 
 ###############################################################################
 # Util / misc

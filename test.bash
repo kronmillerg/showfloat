@@ -394,15 +394,73 @@ END
 
 
 ###############################################################################
+# Error cases (and some barely-not-error boundary cases)
+
+do1 junk <<END
+Error: failed to parse value 'junk'
+END
+
+do1 --exact 1.234junk <<END
+Error: failed to parse value '1.234junk'
+END
+
+do1 --bits blargh <<END
+Error: illegal bits 'blargh', must be nonnegative integer
+END
+
+do1 --bits 3.5 <<END
+Error: illegal bits '3.5', must be nonnegative integer
+END
+
+do1 --bits -0xaaaaaaaa <<END
+Error: illegal bits '-0xaaaaaaaa', must be nonnegative integer
+END
+
+do1 --bits -0xaaaaaaaa <<END
+Error: illegal bits '-0xaaaaaaaa', must be nonnegative integer
+END
+
+# Bits just barely too large for binary32
+do1 --bits 0x100000000 <<END
+Error: bits '0x100000000' too large, 33 bits long but binary32 format only has 32 bits
+END
+
+# Bits just barely not too large
+do1 --bits 0xffffffff <<END
+### INPUT BITS: 0xffffffff
+Dec (approx): -nan
+Hex (%a):     -nan
+fpclassify:   FP_NAN
+Bits (hex):   0xffffffff
+Bits (bin):   1 11111111 11111111111111111111111
+END
+
+# Larger values are fine in binary64...
+do1 --double --bits 0x4000000000000000 <<END
+### INPUT BITS: 0x4000000000000000
+Dec (approx): 2
+Hex (%a):     0x1p+1
+int10 * ULP:  4503599627370496 * 2**-51
+fpclassify:   FP_NORMAL
+Bits (hex):   0x4000000000000000
+Bits (bin):   0 10000000000 0000000000000000000000000000000000000000000000000000
+END
+
+# ...to a point
+do1 --double --bits 0x10000000000000000 <<END
+Error: bits '0x10000000000000000' too large, 65 bits long but binary64 format only has 64 bits
+END
+
+
+###############################################################################
 
 # TODO other categories:
 #   - Types: double precision, half, Intel80
 #   - Massive exact-decimal cases
-#   - Special weird explicit-leading-bit cases (unnormal + pseudo-*)
 #   - Semi-bad inputs (especially unrepresentable hex, but also over/underflow
 #     and decimal rounding edge cases)
 #       - Renormalizing hex, and generally misnormalized cases
-#   - Maybe completely bad inputs? Like "junk".
+#   - Special weird Intel explicit-leading-bit cases (unnormal + pseudo-*)
 
 
 
