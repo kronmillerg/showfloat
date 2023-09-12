@@ -65,7 +65,7 @@ finish() {
 
     if ((failures > 0)); then
         echo
-        echo "Failed $failures tests"
+        echo "Failed $failures of $testno tests"
     else
         echo "Passed all $testno tests"
     fi

@@ -110,7 +110,7 @@ def parseArgs():
     parser.add_argument("-d", "--double", action="store_const",
                         dest="format", const=BINARY64,
                         help="double precision (IEEE binary64)")
-    parser.add_argument("-L", "--long-double", "--x87",
+    parser.add_argument("-L", "--long-double", "--intel80",
                         action="store_const", dest="format", const=INTEL80,
                         help="Intel 80-bit extended precision " +
                             "(x86 long double)")
@@ -161,8 +161,14 @@ def parseArgs():
             pos_args.extend(sys.argv[i+1:])
             break
         is_positional = False
+        # No dashes -> always positional
         if arg[0] != '-':
             is_positional = True
+        # Two dashes -> long form option, always non-positional
+        elif arg.startswith("--"):
+            is_positional = False
+        # One dash -> either short form option or negative positional arg. Take
+        # a closer look and try to guess which one it is.
         # All numerical arguments must contain a _decimal_ digit. Hex arguments
         # require a 0x prefix. This is necessary to avoid a genuine ambiguity
         # with some short-form options -- if we allowed unprefixed hex, then is
