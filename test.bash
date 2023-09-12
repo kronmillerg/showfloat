@@ -467,10 +467,10 @@ END
 ###############################################################################
 # Some cases with pathologically long representations. In each format:
 #   - Max value
-#   - Min subnormal value
 #   - nextDown(2 * min normal value)
 #       - I believe this is the worst case for length of decimal
 #         representation. It is the largest value with an ulp of min-subnormal.
+#   - Min subnormal value
 # The expected strings come from WolframAlpha. Note that you can enter things
 # like "2**-16445 to 16000 digits" to get around the usual limit on how many
 # times it'll let you click "more digits" (though there does still seem to be a
