@@ -396,20 +396,65 @@ def formatInfNan(fltVal):
         assert False
 
 def getFpClassifyStr(fltVal):
-    # TODO unnormals / pseudo-denormals for explicitLeadingBit.
-    # Note: likely source for those terms is [Intel SDM:BA], section 8.2.2 /
-    # Table 8-3, which looks to be the source for the Wikipedia article
-    # ("Extended precision") where I got the terms from.
+    # expLeadingBit is the value we expect the leading mantissa bit to have,
+    # for formats that store it explicitly.
+    ret = None
+    expLeadingBit = None
+
     if bigfloat.is_nan(fltVal.value):
-        return "FP_NAN"
+        ret = "FP_NAN"
+        expLeadingBit = 1
     elif bigfloat.is_inf(fltVal.value):
-        return "FP_INFINITE"
+        ret = "FP_INFINITE"
+        expLeadingBit = 1
     elif bigfloat.is_zero(fltVal.value):
-        return "FP_ZERO"
+        ret = "FP_ZERO"
+        expLeadingBit = 0
     elif fltVal.storedExpo == 0:
-        return "FP_SUBNORMAL"
+        ret = "FP_SUBNORMAL"
+        expLeadingBit = 0
     else:
-        return "FP_NORMAL"
+        ret = "FP_NORMAL"
+        expLeadingBit = 1
+
+    # FIXME why are we not asserting on unnormal 0?
+    #print("DEBUG " + str(fltVal.mantLeadingBit))
+
+    if not fltVal.format.explicitLeadingBit or \
+            fltVal.mantLeadingBit == expLeadingBit:
+        return ret
+
+    # If we didn't return above, then the format has an explicit leading bit
+    # and that leading bit did not have the expected value. This is some weird
+    # non-standard encoding that doesn't really correspond to any of the
+    # fpclassify macros. Currently the only format with an explicit leading bit
+    # is the Intel 80-bit format. These names come from:
+    #
+    #     Intel 64 and IA-32 Architectures Software Developer's Manual, Vol. 1:
+    #     Basic Architecture. Section 8.2.2, Table 8-3. Available online at:
+    #         https://www.intel.com/content/www/us/en/architecture-and-technology/64-ia-32-architectures-software-developer-vol-1-manual.html
+    #
+    # TODO: This naming convention should probably be implemented somewhere
+    # specific to the individual format; not sure it makes sense to expect
+    # other hypothetical formats with an explicit leading bit to use the same
+    # names as Intel. Of course, this is moot since we don't support any such
+    # formats...
+    #
+    # TODO avoid duplicating this series of checks (maybe just set 2 vars for
+    # the "regular name" and the "weird wrong-mant-bit name"?)
+
+    if bigfloat.is_nan(fltVal.value):
+        return "Pseudo-NaN"
+    elif bigfloat.is_inf(fltVal.value):
+        return "Pseudo-infinity"
+    elif bigfloat.is_zero(fltVal.value):
+        # If there is a leading 1 then the value can't be 0
+        assert False
+    elif fltVal.storedExpo == 0:
+        return "Pseudo-denormal"
+    else:
+        return "Unnormal"
+
 
 def formatBitsAsHex(fltVal):
     allBits = fltVal.signbit
@@ -512,7 +557,6 @@ class FloatValue(object):
 
     @property
     def reprIntMant(self):
-        assert bigfloat.is_finite(self.value)
         ret = self.storedMant
         if self.storedExpo != 0 and not self.format.explicitLeadingBit:
             ret += 2**self.format.trailingMantBits
@@ -520,7 +564,6 @@ class FloatValue(object):
 
     @property
     def mantLeadingBit(self):
-        assert bigfloat.is_finite(self.value)
         ret = self.reprIntMant >> self.format.trailingMantBits
         if not self.format.explicitLeadingBit:
             if self.storedExpo == 0:
@@ -712,11 +755,6 @@ HALF_PREC = FloatFormat("__fp16",    5, 10, False)
 
 def ceildiv(x, y):
     return (x + y - 1) // y
-
-# References:
-#   - [Intel SDM:BA] Intel 64 and IA-32 Architectures Software Developer's
-#     Manual, Volume 1: Basic Architecture. Available online at:
-#         https://www.intel.com/content/www/us/en/architecture-and-technology/64-ia-32-architectures-software-developer-vol-1-manual.html
 
 if __name__ == "__main__":
     main()

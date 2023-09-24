@@ -394,6 +394,60 @@ END
 
 
 ###############################################################################
+# Weird Intel80-specific cases where leading mantissa bit has wrong value
+
+do1 --intel80 --bits 0x7fff4000000000000000 <<END
+### INPUT BITS: 0x7fff4000000000000000
+Dec (approx): nan
+Hex (%a):     nan
+fpclassify:   Pseudo-NaN
+Bits (hex):   0x7fff4000000000000000
+Bits (bin):   0 111111111111111 0100000000000000000000000000000000000000000000000000000000000000
+END
+
+do1 --intel80 --bits 0x7fff0000000000000000 <<END
+### INPUT BITS: 0x7fff0000000000000000
+Dec (approx): inf
+Hex (%a):     inf
+fpclassify:   Pseudo-infinity
+Bits (hex):   0x7fff0000000000000000
+Bits (bin):   0 111111111111111 0000000000000000000000000000000000000000000000000000000000000000
+END
+
+do1 --intel80 --bits 0x3fff4000000000000000 <<END
+### INPUT BITS: 0x3fff4000000000000000
+Dec (approx): 0.5
+Hex (%a):     0x0.8p+0
+int10 * ULP:  4611686018427387904 * 2**-63
+fpclassify:   Unnormal
+Bits (hex):   0x3fff4000000000000000
+Bits (bin):   0 011111111111111 0100000000000000000000000000000000000000000000000000000000000000
+END
+
+# TODO Not working yet
+#do1 --intel80 --bits 0x3fff0000000000000000 <<END
+#### INPUT BITS: 0x3fff0000000000000000
+#Dec (approx): 0
+#Hex (%a):     0x0p+0
+#int10 * ULP:  0 * 2**-63
+#fpclassify:   Unnormal
+#Bits (hex):   0x3fff0000000000000000
+#Bits (bin):   0 011111111111111 0000000000000000000000000000000000000000000000000000000000000000
+#END
+
+do1 --intel80 --bits 0x00008000000000000000 <<END
+### INPUT BITS: 0x00008000000000000000
+Dec (approx): 3.36210314311209350626e-4932
+Hex (%a):     0x1p-16382
+int10 * ULP:  9223372036854775808 * 2**-16445
+fpclassify:   Pseudo-denormal
+Bits (hex):   0x00008000000000000000
+Bits (bin):   0 000000000000000 1000000000000000000000000000000000000000000000000000000000000000
+END
+
+
+
+###############################################################################
 # Error cases (and some barely-not-error boundary cases)
 
 do1 junk <<END
