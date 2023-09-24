@@ -15,10 +15,10 @@ import sys
 #       - For that matter, if the input is one of those constants, maybe print
 #         the name?
 #             ### INPUT HEX: 0x1.fffffep+127
-#             float.h name: FLT_MAX
 #             Dec (approx): 3.40282347e+38
 #             Hex (%a):     0x1.fffffep+127
 #             int10 * ULP:  16777215 * 2**104
+#             float.h name: FLT_MAX
 #             fpclassify:   FP_NORMAL
 #             Bits (hex):   0x7f7fffff
 #             Bits (bin):   0 11111110 11111111111111111111111
@@ -28,6 +28,13 @@ import sys
 #             argparse gets to them.
 #           - Also, I guess showfloat.py -d FLT_MAX is valid, but maybe give a
 #             warning if printing a constant in a different format?
+#               - Maybe not, some formats don't have a defined type prefix.
+#                 binary128 I'm not sure if it's going to name its macros like
+#                 LDBL_MAX or just TYP_MAX. If you do:
+#                     showfloat --binary128 LDBL_MAX
+#                 what format do we think the user thinks long double is? Safer
+#                 to only support limit macros relative to the format actually
+#                 in use.
 #   - Option for "print out the parameters of this floating-point format". Exp
 #     bits, mant bits (stored and w/ leading?), exponents of FLT_MAX FLT_MIN
 #     FLT_SUB_MIN, exponent bias.
