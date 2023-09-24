@@ -414,6 +414,7 @@ Bits (hex):   0x7fff0000000000000000
 Bits (bin):   0 111111111111111 0000000000000000000000000000000000000000000000000000000000000000
 END
 
+# Clear the leading bit from 1.5 and we get 0.5
 do1 --intel80 --bits 0x3fff4000000000000000 <<END
 ### INPUT BITS: 0x3fff4000000000000000
 Dec (approx): 0.5
@@ -424,17 +425,30 @@ Bits (hex):   0x3fff4000000000000000
 Bits (bin):   0 011111111111111 0100000000000000000000000000000000000000000000000000000000000000
 END
 
-# TODO Not working yet
-#do1 --intel80 --bits 0x3fff0000000000000000 <<END
-#### INPUT BITS: 0x3fff0000000000000000
-#Dec (approx): 0
-#Hex (%a):     0x0p+0
-#int10 * ULP:  0 * 2**-63
-#fpclassify:   Unnormal
-#Bits (hex):   0x3fff0000000000000000
-#Bits (bin):   0 011111111111111 0000000000000000000000000000000000000000000000000000000000000000
-#END
+# Clear the leading bit from 1.0 and we get 0.0, which is not any kind of
+# subnormal even though it has value 0. Just an unnormal with a zero mantissa.
+do1 --intel80 --bits 0x3fff0000000000000000 <<END
+### INPUT BITS: 0x3fff0000000000000000
+Dec (approx): 0
+Hex (%a):     0x0p+0
+int10 * ULP:  0 * 2**-63
+fpclassify:   Unnormal
+Bits (hex):   0x3fff0000000000000000
+Bits (bin):   0 011111111111111 0000000000000000000000000000000000000000000000000000000000000000
+END
 
+# Pseudo-denormal where we set the leading bit on something already nonzero
+do1 --intel80 --bits 0x0000c000000000000000 <<END
+### INPUT BITS: 0x0000c000000000000000
+Dec (approx): 5.04315471466814025939e-4932
+Hex (%a):     0x1.8p-16382
+int10 * ULP:  13835058055282163712 * 2**-16445
+fpclassify:   Pseudo-denormal
+Bits (hex):   0x0000c000000000000000
+Bits (bin):   0 000000000000000 1100000000000000000000000000000000000000000000000000000000000000
+END
+
+# Pseudo-denormal where we set the leading bit on 0.0.
 do1 --intel80 --bits 0x00008000000000000000 <<END
 ### INPUT BITS: 0x00008000000000000000
 Dec (approx): 3.36210314311209350626e-4932
@@ -514,7 +528,6 @@ END
 #   - Semi-bad inputs (especially unrepresentable hex, but also over/underflow
 #     and decimal rounding edge cases)
 #       - Renormalizing hex, and generally misnormalized cases
-#   - Special weird Intel explicit-leading-bit cases (unnormal + pseudo-*)
 
 
 

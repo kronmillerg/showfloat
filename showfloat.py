@@ -396,64 +396,72 @@ def formatInfNan(fltVal):
         assert False
 
 def getFpClassifyStr(fltVal):
-    # expLeadingBit is the value we expect the leading mantissa bit to have,
-    # for formats that store it explicitly.
-    ret = None
-    expLeadingBit = None
-
-    if bigfloat.is_nan(fltVal.value):
-        ret = "FP_NAN"
-        expLeadingBit = 1
-    elif bigfloat.is_inf(fltVal.value):
-        ret = "FP_INFINITE"
-        expLeadingBit = 1
-    elif bigfloat.is_zero(fltVal.value):
-        ret = "FP_ZERO"
-        expLeadingBit = 0
-    elif fltVal.storedExpo == 0:
-        ret = "FP_SUBNORMAL"
-        expLeadingBit = 0
-    else:
-        ret = "FP_NORMAL"
-        expLeadingBit = 1
-
-    # FIXME why are we not asserting on unnormal 0?
-    #print("DEBUG " + str(fltVal.mantLeadingBit))
-
-    if not fltVal.format.explicitLeadingBit or \
-            fltVal.mantLeadingBit == expLeadingBit:
-        return ret
-
-    # If we didn't return above, then the format has an explicit leading bit
-    # and that leading bit did not have the expected value. This is some weird
-    # non-standard encoding that doesn't really correspond to any of the
-    # fpclassify macros. Currently the only format with an explicit leading bit
-    # is the Intel 80-bit format. These names come from:
+    # Categorize fltVal into one of the 5 standard categories from C's
+    # fpclassify: FP_NAN, FP_INF, FP_NORMAL, FP_SUBNORMAL, FP_ZERO, or
+    # something stranger if it has an explicit leading bit which is not set in
+    # the expected way. The naming convention for the wrong-leading-bit cases
+    # is based on what Intel calls those cases, because currently Intel's
+    # format is the only one we support where this comes up. I got the names
+    # from:
     #
     #     Intel 64 and IA-32 Architectures Software Developer's Manual, Vol. 1:
     #     Basic Architecture. Section 8.2.2, Table 8-3. Available online at:
     #         https://www.intel.com/content/www/us/en/architecture-and-technology/64-ia-32-architectures-software-developer-vol-1-manual.html
     #
-    # TODO: This naming convention should probably be implemented somewhere
-    # specific to the individual format; not sure it makes sense to expect
-    # other hypothetical formats with an explicit leading bit to use the same
-    # names as Intel. Of course, this is moot since we don't support any such
-    # formats...
+    # Ideally maybe those names should be defined somewhere specific to the
+    # format, but it's not really clear how to structure the code until there
+    # are actually multiple formats that need it -- e.g., maybe another format
+    # would use different names for the unnormal/pseudo-denormal cases where
+    # all the trailing mantissa bits are zero.
     #
-    # TODO avoid duplicating this series of checks (maybe just set 2 vars for
-    # the "regular name" and the "weird wrong-mant-bit name"?)
+    #   - BTW, a possible generalizable approach to this might be to just make
+    #     a table of names for all the cases. There are basically 12
+    #     possibilities, the combinations of:
+    #       - Exponent is (all 1s | all 0s | in between)
+    #       - Leading mant bit is (0 | 1)
+    #       - Trailing mant bits are (all 0s | not all 0s)
+    #     So maybe each format could just override the cells of that table for
+    #     which it uses nonstandard names, or something. Again though, no need
+    #     for this until we actually support multiple such formats with
+    #     different naming conventions.
+
+    # name is the standard fpclassify name for fltVal, assuming the leading
+    # mant bit is implicit or set in the expected manner. altName is what we
+    # call it if the leading mant bit does not have the expected value.
+    # expLeadingBit is the value we expect that leading bit to have.
+    name = None
+    altName = None
+    expLeadingBit = None
 
     if bigfloat.is_nan(fltVal.value):
-        return "Pseudo-NaN"
+        name = "FP_NAN"
+        altName = "Pseudo-NaN"
+        expLeadingBit = 1
     elif bigfloat.is_inf(fltVal.value):
-        return "Pseudo-infinity"
-    elif bigfloat.is_zero(fltVal.value):
-        # If there is a leading 1 then the value can't be 0
-        assert False
+        name = "FP_INFINITE"
+        altName = "Pseudo-infinity"
+        expLeadingBit = 1
     elif fltVal.storedExpo == 0:
-        return "Pseudo-denormal"
+        expLeadingBit = 0
+        if bigfloat.is_zero(fltVal.value):
+            # Note: for formats with an explicit leading bit, it's not possible
+            # for the leading bit to be wrong in this case. If the value is
+            # zero, the leading bit _must_ be zero.
+            name = "FP_ZERO"
+            altName = "{error-pseudo-denormal-zero}"
+        else:
+            name = "FP_SUBNORMAL"
+            altName = "Pseudo-denormal"
     else:
-        return "Unnormal"
+        name = "FP_NORMAL"
+        altName = "Unnormal"
+        expLeadingBit = 1
+
+    if not fltVal.format.explicitLeadingBit or \
+            fltVal.mantLeadingBit == expLeadingBit:
+        return name
+    else:
+        return altName
 
 
 def formatBitsAsHex(fltVal):
