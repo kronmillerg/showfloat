@@ -525,6 +525,20 @@ END
 # TODO other categories:
 #   - Types: double precision, half, Intel80
 #       - Probably start with some basic sanity checks in these
+#       - Don't need +/- inf, +/- nan, +/- 0 in every type. At most one sign of
+#         each in other types.
+#       - Note we have tricky decimal cases below which include max norm, min
+#         subnorm, and a small normal.
+#       - Probably a good set of inputs for a new type:
+#           - inf (by value and by bits)
+#           - nan (by value and by bits)
+#           - A moderate normal
+#           - A normal whose hex digits run all the way to the end of the
+#             mantissa? (e.g. .aaaa... with a 0xd or sthg at the end)
+#               - TODO also for float
+#               - Something negative, could be one of the normals
+#               - One of the above by bits as well (maybe the negative one?)
+#           - TYP_MIN and nextDown(TYP_MIN)?
 #   - Semi-bad inputs (especially unrepresentable hex, but also over/underflow
 #     and decimal rounding edge cases)
 #       - Renormalizing hex, and generally misnormalized cases

@@ -35,9 +35,37 @@ import sys
 #                 what format do we think the user thinks long double is? Safer
 #                 to only support limit macros relative to the format actually
 #                 in use.
+#       - Maybe make this a description rather than just a float.h name? Then
+#         we can include things like "largest subnormal", "smallest subnormal".
+#         I think there are only 4 float.h macros that would be used:
+#             TYP_MIN, TYP_MAX, TYP_TRUE_MIN, TYP_EPSILON
+#         Well, but the only one I can think of to include that isn't on that
+#         list is the largest subnormal, which is just nextDown(TYP_MIN) so
+#         whatever. Okay yeah, stick with float.h names because it's more
+#         symmetric / easier to take the same names in as inputs. And more
+#         well-defined which values get names.
+#           - TYP_TRUE_MIN could optionally be qualified with:
+#                 (assuming subnormals supported)
+#             if I want to nod to the fact that lots of hardware sucks.
 #   - Option for "print out the parameters of this floating-point format". Exp
 #     bits, mant bits (stored and w/ leading?), exponents of FLT_MAX FLT_MIN
 #     FLT_SUB_MIN, exponent bias.
+
+# TODO: Reorganize into probably 3 components:
+#   - Raw-float-calc layer just basically adds to bigfloat the functionality I
+#     need, things like formatting hex floats in the format I want,
+#     representing a floating-point type as I define it, parsing a value or
+#     bits into a FloatValue
+#   - "Middle" layer computes (but doesn't print) the things that we will
+#     display to the user, and does all the self-tests. Self-tests only call
+#     off to the low-level layer, never to the middle layer, to ensure I don't
+#     accidentally create an infinite recursion with the self-tests.
+#   - Front-end layer does argument parsing and actually prints the report for
+#     each input number. Also probably does some figuring out of what the type
+#     of the input is -- e.g., middle layer will need to know if it's dealing
+#     with decimal, hex, or macro name, so probably the front-end contains the
+#     heuristic responsible for that. (If necessary, I can add an option to let
+#     the user specify which type their input is.)
 
 
 def main():
@@ -135,6 +163,7 @@ def parseArgs():
     # that we have a -f.
     # TODO: Maybe get rid of -f? If float is the default, we don't really need
     # a short way to specify it. Or could make it -F.
+    #   - No, that's not better, we accept -INF as well.
 
     parser.add_argument("inputs", nargs="*", metavar="VALUE",
                         help="values to show")
@@ -152,9 +181,14 @@ def parseArgs():
     # TODO: -q, --binary128: IEEE binary128?
     # -h is already taken for --help.
     # TODO: Maybe make all the formats capital for consistency?
+    #   - Or get rid of -H since it's not very obvious and __fp16 is an
+    #     uncommon case anyway
     parser.add_argument("-H", "--half", "--fp16", action="store_const",
                         dest="format", const=HALF_PREC,
                         help="half precision")
+    # TODO maybe get rid of -v -b, not sure these are worth short-form options
+    #   - Or at least -v; again, it's the default so doesn't really need to be
+    #     passed. And it looks like it should be --verbose or --version.
     parser.add_argument("-v", "--value", action="store_false", default=False,
                         dest="input_is_bits",
                         help="treat input as numerical value")
@@ -256,7 +290,7 @@ def showFloat(fltVal, exactDecimal=False):
     #     parse back to exact same val (unless NaN)
     #   - hex val ditto, but also in a context with greater precision and/or
     #     range
-    #   - 10exp2, evaluated to greater range and equal or greater precision,
+    #   - int10*ULP, evaluated to greater range and equal or greater precision,
     #     should produce same value. (Needs greater range b/c of the exp2.)
     #       - Actually, scratch that. On the small end, the power mins out at
     #         min subnorm. On the large end, it's a modest integer times a
@@ -404,7 +438,7 @@ def formatInfNan(fltVal):
 
 def getFpClassifyStr(fltVal):
     # Categorize fltVal into one of the 5 standard categories from C's
-    # fpclassify: FP_NAN, FP_INF, FP_NORMAL, FP_SUBNORMAL, FP_ZERO, or
+    # fpclassify: FP_NAN, FP_INF, FP_NORMAL, FP_SUBNORMAL, FP_ZERO; or
     # something stranger if it has an explicit leading bit which is not set in
     # the expected way. The naming convention for the wrong-leading-bit cases
     # is based on what Intel calls those cases, because currently Intel's
