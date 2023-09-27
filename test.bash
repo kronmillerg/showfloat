@@ -394,6 +394,98 @@ END
 
 
 ###############################################################################
+# Basic cases for double
+
+do1 --double inf <<END
+### INPUT DECIMAL: inf
+Dec (approx): inf
+Hex (%a):     inf
+fpclassify:   FP_INFINITE
+Bits (hex):   0x7ff0000000000000
+Bits (bin):   0 11111111111 0000000000000000000000000000000000000000000000000000
+END
+
+do1 --double nan <<END
+### INPUT DECIMAL: nan
+Dec (approx): nan
+Hex (%a):     nan
+fpclassify:   FP_NAN
+Example bits
+       (hex): 0x7ff8000000000000
+       (bin): 0 11111111111 1000000000000000000000000000000000000000000000000000
+END
+
+do1 --double --bits 0x7ff0000000000000 <<END
+### INPUT BITS: 0x7ff0000000000000
+Dec (approx): inf
+Hex (%a):     inf
+fpclassify:   FP_INFINITE
+Bits (hex):   0x7ff0000000000000
+Bits (bin):   0 11111111111 0000000000000000000000000000000000000000000000000000
+END
+
+do1 --double --bits 0x7ff0000000000001 <<END
+### INPUT BITS: 0x7ff0000000000001
+Dec (approx): nan
+Hex (%a):     nan
+fpclassify:   FP_NAN
+Bits (hex):   0x7ff0000000000001
+Bits (bin):   0 11111111111 0000000000000000000000000000000000000000000000000001
+END
+
+do1 --double 1.25 <<END
+### INPUT DECIMAL: 1.25
+Dec (approx): 1.25
+Hex (%a):     0x1.4p+0
+int10 * ULP:  5629499534213120 * 2**-52
+fpclassify:   FP_NORMAL
+Bits (hex):   0x3ff4000000000000
+Bits (bin):   0 01111111111 0100000000000000000000000000000000000000000000000000
+END
+
+do1 --double 0x1.555555555555dp+0 <<END
+### INPUT HEX: 0x1.555555555555dp+0
+Dec (approx): 1.333333333333335
+Hex (%a):     0x1.555555555555dp+0
+int10 * ULP:  6004799503160669 * 2**-52
+fpclassify:   FP_NORMAL
+Bits (hex):   0x3ff555555555555d
+Bits (bin):   0 01111111111 0101010101010101010101010101010101010101010101011101
+END
+
+do1 --double --bits 0xbff555555555555d <<END
+### INPUT BITS: 0xbff555555555555d
+Dec (approx): -1.333333333333335
+Hex (%a):     -0x1.555555555555dp+0
+int10 * ULP:  -6004799503160669 * 2**-52
+fpclassify:   FP_NORMAL
+Bits (hex):   0xbff555555555555d
+Bits (bin):   1 01111111111 0101010101010101010101010101010101010101010101011101
+END
+
+do1 --double 0x1p-1022 <<END
+### INPUT HEX: 0x1p-1022
+Dec (approx): 2.2250738585072014e-308
+Hex (%a):     0x1p-1022
+int10 * ULP:  4503599627370496 * 2**-1074
+fpclassify:   FP_NORMAL
+Bits (hex):   0x0010000000000000
+Bits (bin):   0 00000000001 0000000000000000000000000000000000000000000000000000
+END
+
+do1 --double 0x0.fffffffffffffp-1022 <<END
+### INPUT HEX: 0x0.fffffffffffffp-1022
+Dec (approx): 2.2250738585072009e-308
+Hex (%a):     0x0.fffffffffffffp-1022
+int10 * ULP:  4503599627370495 * 2**-1074
+fpclassify:   FP_SUBNORMAL
+Bits (hex):   0x000fffffffffffff
+Bits (bin):   0 00000000000 1111111111111111111111111111111111111111111111111111
+END
+
+
+
+###############################################################################
 # Weird Intel80-specific cases where leading mantissa bit has wrong value
 
 do1 --intel80 --bits 0x7fff4000000000000000 <<END

@@ -47,6 +47,8 @@ import sys
 #           - TYP_TRUE_MIN could optionally be qualified with:
 #                 (assuming subnormals supported)
 #             if I want to nod to the fact that lots of hardware sucks.
+#       - Oh also, once this is implemented, "inf" and "nan" should show as
+#         "### INPUT NAME" or whatever we do for the float.h macros
 #   - Option for "print out the parameters of this floating-point format". Exp
 #     bits, mant bits (stored and w/ leading?), exponents of FLT_MAX FLT_MIN
 #     FLT_SUB_MIN, exponent bias.
