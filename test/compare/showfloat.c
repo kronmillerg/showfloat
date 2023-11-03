@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define FLT_MIN_SUB_EXP (-149)
+
 typedef union {
     float    val;
     uint32_t bits;
@@ -135,9 +137,16 @@ void showFloat (const char *valString, bool isBits, bool exactDec)
 
         errno = 0;
         u.val = strtof(valString, &end);
-        assume(*valString != '\0' && *end == '\0' && errno == 0,
+        // Don't check errno here because it's set for subnormal result.
+        assume(*valString != '\0' && *end == '\0' /* && errno == 0 */,
                 "failed to parse value");
     }
+
+    // These almost work, but because they get upcast to double in printf, they
+    // get normalized differently than what showfloat.py does and the test
+    // expects. Should be able to test double subnormals though, I hope...
+    assume(fpclassify(u.val) != FP_SUBNORMAL,
+        "float subnormals not supported");
 
     printf("### INPUT %s: %s\n", inputType, valString);
     if (exactDec)
@@ -148,14 +157,23 @@ void showFloat (const char *valString, bool isBits, bool exactDec)
 
     int exp = 0;
     float mant = frexpf(u.val, &exp);
-    exp -= FLT_MANT_DIG;
     mant = scalbnf(mant, FLT_MANT_DIG);
-    {
+    exp -= FLT_MANT_DIG;
+    if (exp < FLT_MIN_SUB_EXP) {
+        mant = scalbnf(mant, exp - FLT_MIN_SUB_EXP);
+        exp  = FLT_MIN_SUB_EXP;
+    }
+    if (mant == 0.0f)
+        exp  = FLT_MIN_SUB_EXP;
+
+    if (!isnan(u.val)) {
         float dummy;
         assert(modff(mant, &dummy) == 0.0f);
     }
 
-    printf("int10 * ULP:  %.0f * 2**%d\n", mant, exp);
+    // An isfinite check here is enough to work on infinities
+    if (isfinite(u.val))
+        printf("int10 * ULP:  %.0f * 2**%d\n", mant, exp);
     printf("fpclassify:   %s\n", fpcls2str(fpclassify(u.val)));
     printf("Bits (hex):   0x%08lx\n", (unsigned long)u.bits);
 
