@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 
+"""
+Copyright 2023, Greg Kronmiller
+
+Program to convert floating-point values between different representations
+"""
+
 import argparse
 import bigfloat
 import math

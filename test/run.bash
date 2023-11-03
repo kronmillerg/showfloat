@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Copyright 2023, Greg Kronmiller
+#
+# Test code for showfloat.py
+
+
+
 my_dir="$(dirname "$(readlink -e "${BASH_SOURCE[0]}")")"
 
 ###############################################################################

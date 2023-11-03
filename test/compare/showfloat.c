@@ -1,3 +1,9 @@
+/* Copyright 2023, Greg Kronmiller
+ *
+ * C implementation of (the simpler parts of) showfloat, for purposes of
+ * comparing two implementations (mostly to verify the tests are correct).
+ */
+
 #include <assert.h>
 #include <errno.h>
 #include <float.h>
