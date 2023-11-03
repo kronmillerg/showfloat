@@ -9,6 +9,7 @@
 #include <string.h>
 
 #define FLT_MIN_SUB_EXP (-149)
+#define DBL_MIN_SUB_EXP (-1074)
 
 typedef union {
     float    val;
@@ -181,10 +182,66 @@ void showFloat (const char *valString, bool isBits, bool exactDec)
     printf("Bits (bin):   %.1s %.8s %.23s\n", binBits, binBits+1, binBits+9);
 }
 
+// Sorry about the copy-paste...
 void showDouble(const char *valString, bool isBits, bool exactDec)
 {
-    // TODO
-    assume(false, "double not supported yet");
+    Double u = {0};
+
+    char *end = NULL;
+    const char *inputType = NULL;
+    if (isBits) {
+        inputType = "BITS";
+
+        errno = 0;
+        u.bits = strtoull(valString, &end, 0);
+        assume(*valString != '\0' && *end == '\0' && errno == 0,
+                "failed to parse bits");
+    } else {
+        // Just use the same heuristic the Python currently uses. If "0x" or
+        // "0X" is anywhere in the string, assume it's hex.
+        if (strstr(valString, "0x") || strstr(valString, "0X"))
+            inputType = "HEX";
+        else
+            inputType = "DECIMAL";
+
+        errno = 0;
+        u.val = strtod(valString, &end);
+        // Don't check errno here because it's set for subnormal result.
+        assume(*valString != '\0' && *end == '\0' /* && errno == 0 */,
+                "failed to parse value");
+    }
+
+    printf("### INPUT %s: %s\n", inputType, valString);
+    if (exactDec)
+        printf("Dec (exact):  %.9999g\n", u.val);
+    else
+        printf("Dec (approx): %.*g\n", (int)DBL_DECIMAL_DIG, u.val);
+    printf("Hex (%%a):     %a\n", u.val);
+
+    int exp = 0;
+    double mant = frexp(u.val, &exp);
+    mant = scalbn(mant, DBL_MANT_DIG);
+    exp -= DBL_MANT_DIG;
+    if (exp < DBL_MIN_SUB_EXP) {
+        mant = scalbn(mant, exp - DBL_MIN_SUB_EXP);
+        exp  = DBL_MIN_SUB_EXP;
+    }
+    if (mant == 0.0)
+        exp  = DBL_MIN_SUB_EXP;
+
+    if (!isnan(u.val)) {
+        double dummy;
+        assert(modf(mant, &dummy) == 0.0);
+    }
+
+    // An isfinite check here is enough to work on infinities
+    if (isfinite(u.val))
+        printf("int10 * ULP:  %.0f * 2**%d\n", mant, exp);
+    printf("fpclassify:   %s\n", fpcls2str(fpclassify(u.val)));
+    printf("Bits (hex):   0x%016llx\n", (unsigned long long)u.bits);
+
+    const char *binBits = bitsToBin(u.bits, 64);
+    printf("Bits (bin):   %.1s %.11s %.52s\n", binBits, binBits+1, binBits+12);
 }
 
 // Returns pointer to static buffer, invalidated on next call!
