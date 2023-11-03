@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-Copyright 2023, Greg Kronmiller
+Copyright (c) 2023 Greg Kronmiller
 
 Program to convert floating-point values between different representations
 """

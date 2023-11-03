@@ -1,4 +1,4 @@
-/* Copyright 2023, Greg Kronmiller
+/* Copyright (c) 2023 Greg Kronmiller
  *
  * C implementation of (the simpler parts of) showfloat, for purposes of
  * comparing two implementations (mostly to verify the tests are correct).

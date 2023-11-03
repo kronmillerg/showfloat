@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2023, Greg Kronmiller
+# Copyright (c) 2023 Greg Kronmiller
 #
 # Test code for showfloat.py
 
