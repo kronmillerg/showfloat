@@ -50,7 +50,7 @@ The output formats are as follows:
 *   `int10 * ULP` - a decimal integer times a power of 2, written like
     `x * 2**y`. The power of 2 is always the one encoded in the exponent field,
     and the mantissa is scaled accordingly -- hence in the above example, 1.5
-    is "12582912 * 2**-23", not "3 * 2**-1". This gives 2 useful pieces of
+    is `12582912 * 2**-23`, not `3 * 2**-1`. This gives 2 useful pieces of
     information:
     *   The whole expression is suitable for copying into a calculator /
         computation software which can handle high-precision values but doesn't
